@@ -1,0 +1,119 @@
+name: proxyhub
+
+services:
+  proxyhub-server:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-file:/app/data/proxyhub.db}
+      WEB_ORIGIN: ${WEB_ORIGIN:-https://localhost}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env}
+      AGENT_URL: http://proxyhub-agent:3001
+      AGENT_TOKEN: ${AGENT_TOKEN:?Set AGENT_TOKEN in .env}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-24}
+    volumes:
+      - proxyhub-data:/app/data
+    depends_on:
+      proxyhub-agent:
+        condition: service_healthy
+    networks: [proxyhub]
+
+  proxyhub-web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    restart: unless-stopped
+    networks: [proxyhub]
+
+  proxyhub-agent:
+    build:
+      context: .
+      dockerfile: docker/agent.Dockerfile
+      args:
+        XRAY_CORE_VERSION: 26.5.9
+    restart: unless-stopped
+    pid: service:xray
+    environment:
+      NODE_ENV: production
+      AGENT_TOKEN: ${AGENT_TOKEN:?Set AGENT_TOKEN in .env}
+      XRAY_BINARY: /usr/local/bin/xray
+      XRAY_CONFIG_PATH: /etc/xray/config.json
+      XRAY_RESTART_SIGNAL: /var/run/proxyhub/restart
+      XRAY_APPLIED_PATH: /var/run/proxyhub/applied
+      XRAY_PID_PATH: /var/run/proxyhub/xray.pid
+      XRAY_HEARTBEAT_PATH: /var/run/proxyhub/xray.heartbeat
+      XRAY_PROBE_HOST: host.docker.internal
+      XRAY_HEALTH_TIMEOUT_MS: ${XRAY_HEALTH_TIMEOUT_MS:-12000}
+    volumes:
+      - xray-config:/etc/xray
+      - xray-runtime:/var/run/proxyhub
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3001/status',{headers:{authorization:'Bearer '+process.env.AGENT_TOKEN}}).then(r=>{if(!r.ok)process.exit(1)})",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      xray:
+        condition: service_healthy
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    networks: [proxyhub]
+
+  xray:
+    build:
+      context: .
+      dockerfile: docker/xray.Dockerfile
+      args:
+        XRAY_CORE_VERSION: 26.5.9
+    restart: unless-stopped
+    volumes:
+      - xray-config:/etc/xray
+      - xray-runtime:/var/run/proxyhub
+    network_mode: host
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'test -s /var/run/proxyhub/xray.pid && kill -0 $$(cat /var/run/proxyhub/xray.pid) && xray run -test -config /etc/xray/config.json',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      PANEL_DOMAIN: ${PANEL_DOMAIN:-localhost}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [proxyhub-web, proxyhub-server]
+    networks: [proxyhub]
+
+volumes:
+  proxyhub-data:
+  xray-config:
+  xray-runtime:
+  caddy-data:
+  caddy-config:
+
+networks:
+  proxyhub:

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+*.db
+*.db-journal
+*.db-wal
+coverage/
+playwright-report/
+test-results/
+apps/server/data/
+apps/agent/data/

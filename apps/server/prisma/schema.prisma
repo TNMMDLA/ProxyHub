@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id                 String         @id @default(cuid())
+  username           String         @unique
+  passwordHash       String
+  role               String         @default("ADMIN")
+  totpEnabled        Boolean        @default(false)
+  totpSecretEncrypted String?
+  failedLoginCount   Int            @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  lastLoginIp        String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  sessions           Session[]
+  recoveryCodes      RecoveryCode[]
+  apiTokens          ApiToken[]
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip        String
+  userAgent String
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  lastUsedAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model RecoveryCode {
+  id        String    @id @default(cuid())
+  codeHash  String
+  usedAt    DateTime?
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model ApiToken {
+  id         String    @id @default(cuid())
+  name       String
+  tokenHash  String    @unique
+  permission String
+  userId     String
+  user       AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model Server {
+  id            String   @id @default(cuid())
+  name          String
+  hostname      String
+  ip            String
+  region        String   @default("Local")
+  country       String   @default("")
+  city          String   @default("")
+  provider      String   @default("Self-hosted")
+  agentVersion  String?
+  xrayVersion   String?
+  status        String   @default("UNKNOWN")
+  cpuUsage      Float    @default(0)
+  memoryUsage   Float    @default(0)
+  diskUsage     Float    @default(0)
+  networkRx     Float    @default(0)
+  networkTx     Float    @default(0)
+  lastHeartbeat DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  nodes         Node[]
+  agent         Agent?
+}
+
+model Agent {
+  id            String   @id @default(cuid())
+  serverId      String   @unique
+  server        Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  endpoint      String
+  tokenHash     String
+  version       String?
+  status        String   @default("UNKNOWN")
+  lastHeartbeat DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Node {
+  id                          String           @id @default(cuid())
+  serverId                    String
+  server                      Server           @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name                        String
+  protocol                    String           @default("VLESS")
+  transport                   String           @default("TCP")
+  host                        String
+  port                        Int
+  uuid                        String           @unique
+  flow                        String           @default("xtls-rprx-vision")
+  realityPublicKey            String
+  realityPrivateKeyEncrypted  String
+  shortId                     String
+  sni                         String
+  dest                        String
+  fingerprint                 String           @default("chrome")
+  status                      String           @default("UNKNOWN")
+  enabled                     Boolean          @default(true)
+  lastCheckAt                 DateTime?
+  latency                     Int?
+  exitIp                      String?
+  asn                         String?
+  country                     String?
+  region                      String?
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @updatedAt
+  pools                       NodePoolMember[]
+
+  @@unique([serverId, port])
+  @@index([status, enabled])
+}
+
+model NodePool {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String           @default("")
+  region      String           @default("Global")
+  strategy    String           @default("MANUAL")
+  enabled     Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  members     NodePoolMember[]
+}
+
+model NodePoolMember {
+  nodeId     String
+  node       Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  nodePoolId String
+  nodePool   NodePool @relation(fields: [nodePoolId], references: [id], onDelete: Cascade)
+  priority   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@id([nodeId, nodePoolId])
+  @@index([nodePoolId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  level     String    @default("INFO")
+  title     String
+  message   String
+  eventType String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([readAt, createdAt])
+}
+
+model SecurityEvent {
+  id        String   @id @default(cuid())
+  type      String
+  severity  String
+  ip        String?
+  userAgent String?
+  metadata  String   @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorName  String
+  action     String
+  resource   String
+  resourceId String?
+  ip         String?
+  result     String
+  metadata   String   @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([resource, resourceId])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  encrypted Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
+
