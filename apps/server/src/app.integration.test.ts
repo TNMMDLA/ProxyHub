@@ -359,6 +359,40 @@ describe('ProxyHub foundation API', () => {
     expect(blockedDelete.statusCode).toBe(409);
     expect(blockedDelete.json().error.code).toBe('NODE_POOL_IN_USE');
 
+    const unavailablePool = await app.inject({
+      method: 'PUT',
+      url: `/api/node-pools/${policyPoolId}`,
+      headers: { cookie },
+      payload: {
+        name: 'Policy Pool',
+        description: 'Compiler integration pool',
+        region: 'Global',
+        strategy: 'MANUAL',
+        enabled: true,
+        nodeIds: [],
+      },
+    });
+    expect(unavailablePool.statusCode, unavailablePool.body).toBe(200);
+    await expect(
+      prisma.notification.findFirstOrThrow({
+        where: { eventType: 'NODE_POOL_REFERENCED_UNAVAILABLE' },
+      }),
+    ).resolves.toBeTruthy();
+    const restoredPool = await app.inject({
+      method: 'PUT',
+      url: `/api/node-pools/${policyPoolId}`,
+      headers: { cookie },
+      payload: {
+        name: 'Policy Pool',
+        description: 'Compiler integration pool',
+        region: 'Global',
+        strategy: 'MANUAL',
+        enabled: true,
+        nodeIds: [node.id],
+      },
+    });
+    expect(restoredPool.statusCode, restoredPool.body).toBe(200);
+
     await app.inject({
       method: 'PATCH',
       url: `/api/policies/${policyId}`,

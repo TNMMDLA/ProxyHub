@@ -39,8 +39,15 @@ export const poolRoutes: FastifyPluginAsync = async (app) => {
   app.put('/:id', { preHandler: requireRole('ADMIN', 'OPERATOR') }, async (request) => {
     const id = (request.params as { id: string }).id;
     const input = createPoolSchema.parse(request.body);
-    if (!(await prisma.nodePool.findUnique({ where: { id } })))
-      throw new AppError('POOL_NOT_FOUND', 'Node pool not found', 404);
+    const existing = await prisma.nodePool.findUnique({
+      where: { id },
+      include: {
+        ...include,
+        defaultPolicies: { select: { id: true, name: true } },
+        policyRules: { select: { policy: { select: { id: true, name: true } } } },
+      },
+    });
+    if (!existing) throw new AppError('POOL_NOT_FOUND', 'Node pool not found', 404);
     const pool = await prisma.$transaction(async (tx) => {
       await tx.nodePoolMember.deleteMany({ where: { nodePoolId: id } });
       return tx.nodePool.update({
@@ -57,6 +64,24 @@ export const poolRoutes: FastifyPluginAsync = async (app) => {
       });
     });
     await audit(request, 'NODE_POOL_UPDATE', 'NodePool', 'SUCCESS', id);
+    const wasAvailable = existing.enabled && existing.members.some((member) => member.node.enabled);
+    const isAvailable = pool.enabled && pool.members.some((member) => member.node.enabled);
+    if (wasAvailable && !isAvailable) {
+      const policies = [
+        ...existing.defaultPolicies,
+        ...existing.policyRules.map((rule) => rule.policy),
+      ].filter((policy, index, all) => all.findIndex((item) => item.id === policy.id) === index);
+      if (policies.length) {
+        await prisma.notification.create({
+          data: {
+            level: 'WARNING',
+            title: 'Referenced node pool unavailable',
+            message: `${pool.name} no longer has enabled nodes for ${String(policies.length)} referenced polic${policies.length === 1 ? 'y' : 'ies'}.`,
+            eventType: 'NODE_POOL_REFERENCED_UNAVAILABLE',
+          },
+        });
+      }
+    }
     return { success: true, data: pool };
   });
 
