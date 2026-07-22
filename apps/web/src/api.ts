@@ -10,10 +10,14 @@ export class ApiError extends Error {
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
+    const headers = new Headers(init?.headers);
+    if (init?.body != null && !headers.has('content-type')) {
+      headers.set('content-type', 'application/json');
+    }
     response = await fetch(`/api${path}`, {
       credentials: 'include',
       ...init,
-      headers: { 'content-type': 'application/json', ...init?.headers },
+      headers,
     });
   } catch {
     throw new ApiError('NETWORK_ERROR', 'Unable to reach the ProxyHub API');

@@ -62,6 +62,23 @@ export const poolRoutes: FastifyPluginAsync = async (app) => {
 
   app.delete('/:id', { preHandler: requireRole('ADMIN', 'OPERATOR') }, async (request) => {
     const id = (request.params as { id: string }).id;
+    const references = await prisma.nodePool.findUnique({
+      where: { id },
+      include: {
+        defaultPolicies: { select: { id: true, name: true } },
+        policyRules: { select: { policy: { select: { id: true, name: true } } } },
+      },
+    });
+    if (!references) throw new AppError('POOL_NOT_FOUND', 'Node pool not found', 404);
+    const policies = [
+      ...references.defaultPolicies,
+      ...references.policyRules.map((rule) => rule.policy),
+    ].filter((policy, index, all) => all.findIndex((item) => item.id === policy.id) === index);
+    if (policies.length) {
+      throw new AppError('NODE_POOL_IN_USE', 'Node pool is referenced by policies', 409, {
+        policies,
+      });
+    }
     await prisma.nodePool.delete({ where: { id } });
     await audit(request, 'NODE_POOL_DELETE', 'NodePool', 'SUCCESS', id);
     return { success: true, data: null };

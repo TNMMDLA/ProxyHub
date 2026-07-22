@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Command,
   LayoutDashboard,
+  Link2,
   Menu,
   Moon,
   ScrollText,
@@ -14,6 +15,7 @@ import {
   Settings,
   ShieldCheck,
   Sun,
+  Route as RouteIcon,
   Waypoints,
   X,
 } from 'lucide-react';
@@ -32,6 +34,13 @@ const groups = [
       { to: '/nodes', label: 'Nodes', icon: Waypoints },
       { to: '/node-pools', label: 'Node Pools', icon: Boxes },
       { to: '/security', label: 'Security', icon: ShieldCheck },
+    ],
+  },
+  {
+    label: 'POLICY',
+    items: [
+      { to: '/policies', label: 'Policy Studio', icon: RouteIcon },
+      { to: '/subscriptions', label: 'Subscriptions', icon: Link2 },
     ],
   },
   { label: 'ACCESS', items: [{ to: '/notifications', label: 'Notifications', icon: Bell }] },
@@ -139,7 +148,7 @@ export function AppShell({ admin }: { admin: Admin }) {
             <i />
             {systemLabel}
           </span>
-          <small>v0.1.0 · Open source</small>
+          <small>v0.2.0 · Open source</small>
         </div>
       </aside>
       {sidebarOpen ? (
@@ -163,7 +172,7 @@ export function AppShell({ admin }: { admin: Admin }) {
           </h2>
           <button className="search-button" onClick={() => setSearchOpen(true)}>
             <Search size={18} />
-            <span>Search servers, nodes, pools...</span>
+            <span>Search infrastructure and policies...</span>
             <kbd>⌘K</kbd>
           </button>
           <div className="top-actions">
@@ -190,7 +199,7 @@ export function AppShell({ admin }: { admin: Admin }) {
         <footer>
           <span>© 2026 ProxyHub · Open source under MIT License</span>
           <span>
-            <i /> API online <b>v0.1.0</b>
+            <i /> API online <b>v0.2.0</b>
           </span>
         </footer>
       </main>
@@ -215,7 +224,7 @@ export function AppShell({ admin }: { admin: Admin }) {
             <p>Quick navigation</p>
             {groups
               .flatMap((group) => group.items)
-              .slice(0, 6)
+              .slice(0, 8)
               .map((item) => (
                 <button
                   key={item.to}

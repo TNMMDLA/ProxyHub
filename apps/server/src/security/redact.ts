@@ -6,6 +6,8 @@ const SENSITIVE_KEYS = new Set([
   'secret',
   'privateKey',
   'recoveryCode',
+  'subscriptionToken',
+  'tokenHash',
 ]);
 
 export function redactSensitive(value: unknown): unknown {

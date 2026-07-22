@@ -1,10 +1,10 @@
 # ProxyHub
 
-ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.1 Foundation provides a secure controller, an authenticated local Agent, Xray lifecycle integration, VLESS Reality node management, node pools, operational notifications, audit logging, and a responsive web console.
+ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.2 adds a client-independent Policy Studio and secure subscription compiler to the stabilized V0.1 infrastructure foundation.
 
 ![ProxyHub dashboard design](docs/design/proxyhub-dashboard-concept.png)
 
-> Status: V0.1.1 Stabilization. The infrastructure lifecycle is being hardened before Subscription Engine or Policy Studio work begins.
+> Status: V0.2 Policy Studio & Subscription Engine implemented and locally verified. **V0.1.1 Linux Production Smoke Test Pending**; do not treat this revision as production-accepted until the VPS checklist passes.
 
 ### V0.1.1 implementation notes
 
@@ -28,6 +28,10 @@ ProxyHub is a modern, open-source proxy infrastructure management platform for L
 - Xray configuration test, temporary-file cleanup, revision backup, atomic apply, acknowledged restart, health check, and rollback
 - Node and node-pool CRUD with many-to-many membership
 - Web notification center and searchable audit log
+- Client-independent policies with ordered, first-match-wins rules and node-pool actions
+- Deterministic Mihomo, sing-box, and raw VLESS subscription compilers with explicit diagnostics
+- Hashed, rotatable subscription tokens with expiry, rate limiting, ETag, and one-time token display
+- Policy Studio and subscription management pages with masked-by-default previews
 - Light/dark themes, command palette, responsive navigation, tables, dialogs, and QR sharing
 - SQLite through Prisma migrations, with a schema designed for later PostgreSQL migration
 - Docker Compose deployment with Caddy automatic HTTPS
@@ -45,6 +49,8 @@ flowchart LR
   Agent -->|restart signal| Supervisor["Xray supervisor"]
   Config --> Xray["Xray-core"]
   Supervisor --> Xray
+  API --> Policy["Policy compiler core"]
+  Policy --> Sub["Mihomo / sing-box / raw VLESS"]
 ```
 
 The controller never accepts arbitrary shell commands. System actions are fixed functions, Agent requests use a dedicated token, and Xray changes are rejected unless `xray run -test` succeeds. Each apply receives a unique rollback revision. The backup is retained until the database transaction commits and is restored automatically if restart or health verification fails.
@@ -134,7 +140,7 @@ pnpm test
 pnpm build
 ```
 
-The integration suite creates an isolated SQLite database, applies the real migration, and covers administrator bootstrap, sessions, TOTP, recovery codes, transactional Reality node synchronization, failed-apply rollback, node-pool replacement, dashboard health aggregation, notifications, and audit logs.
+The integration suite creates an isolated SQLite database, applies every real migration, and covers administrator bootstrap, sessions, TOTP, recovery codes, transactional Reality node synchronization, failed-apply rollback, node-pool replacement, dashboard health aggregation, policy and rule lifecycle, deterministic compilation, subscription token rotation/expiry, notifications, and audit logs.
 
 The complete Linux deployment acceptance procedure is in [docs/deployment-smoke-test.md](docs/deployment-smoke-test.md).
 
@@ -153,35 +159,47 @@ All responses use `{ "success": true, "data": ... }` or:
 }
 ```
 
-| Method            | Path                          | Purpose                                    |
-| ----------------- | ----------------------------- | ------------------------------------------ |
-| `GET`             | `/api/health`                 | Controller health                          |
-| `GET`             | `/api/auth/status`            | First-run bootstrap state                  |
-| `POST`            | `/api/auth/bootstrap`         | Create the first administrator             |
-| `POST`            | `/api/auth/login`             | Password plus optional TOTP/recovery login |
-| `POST`            | `/api/auth/logout`            | Revoke the current session                 |
-| `GET`             | `/api/auth/me`                | Current administrator                      |
-| `GET`, `DELETE`   | `/api/auth/sessions`          | List sessions / log out all                |
-| `POST`            | `/api/auth/2fa/setup`         | Generate TOTP enrollment                   |
-| `POST`            | `/api/auth/2fa/enable`        | Verify TOTP and issue recovery codes       |
-| `GET`, `POST`     | `/api/nodes`                  | List/create Reality nodes                  |
-| `PATCH`, `DELETE` | `/api/nodes/:id`              | Update/delete a node                       |
-| `POST`            | `/api/nodes/:id/clone`        | Clone with fresh credentials               |
-| `GET`             | `/api/nodes/:id/share`        | VLESS URI and QR code                      |
-| `GET`, `POST`     | `/api/node-pools`             | List/create node pools                     |
-| `PUT`, `DELETE`   | `/api/node-pools/:id`         | Replace/delete a pool                      |
-| `GET`             | `/api/dashboard`              | Aggregated operational overview            |
-| `GET`             | `/api/servers`                | Server inventory                           |
-| `GET`             | `/api/xray/status`            | Agent/Xray status                          |
-| `POST`            | `/api/xray/restart`           | Validated fixed restart action             |
-| `GET`             | `/api/notifications`          | Notification center                        |
-| `PATCH`           | `/api/notifications/:id/read` | Mark one notification read                 |
-| `POST`            | `/api/notifications/read-all` | Mark all notifications read                |
-| `GET`             | `/api/audit-logs`             | Recent audit records                       |
+| Method                   | Path                                | Purpose                                    |
+| ------------------------ | ----------------------------------- | ------------------------------------------ |
+| `GET`                    | `/api/health`                       | Controller health                          |
+| `GET`                    | `/api/auth/status`                  | First-run bootstrap state                  |
+| `POST`                   | `/api/auth/bootstrap`               | Create the first administrator             |
+| `POST`                   | `/api/auth/login`                   | Password plus optional TOTP/recovery login |
+| `POST`                   | `/api/auth/logout`                  | Revoke the current session                 |
+| `GET`                    | `/api/auth/me`                      | Current administrator                      |
+| `GET`, `DELETE`          | `/api/auth/sessions`                | List sessions / log out all                |
+| `POST`                   | `/api/auth/2fa/setup`               | Generate TOTP enrollment                   |
+| `POST`                   | `/api/auth/2fa/enable`              | Verify TOTP and issue recovery codes       |
+| `GET`, `POST`            | `/api/nodes`                        | List/create Reality nodes                  |
+| `PATCH`, `DELETE`        | `/api/nodes/:id`                    | Update/delete a node                       |
+| `POST`                   | `/api/nodes/:id/clone`              | Clone with fresh credentials               |
+| `GET`                    | `/api/nodes/:id/share`              | VLESS URI and QR code                      |
+| `GET`, `POST`            | `/api/node-pools`                   | List/create node pools                     |
+| `PUT`, `DELETE`          | `/api/node-pools/:id`               | Replace/delete a pool                      |
+| `GET`, `POST`            | `/api/policies`                     | List/create policies                       |
+| `GET`, `PATCH`, `DELETE` | `/api/policies/:id`                 | Read/update/delete a policy                |
+| `POST`                   | `/api/policies/:id/duplicate`       | Duplicate a policy and its rules           |
+| `POST`                   | `/api/policies/:id/rules`           | Add an ordered policy rule                 |
+| `PATCH`, `DELETE`        | `/api/policies/:id/rules/:ruleId`   | Update/delete a rule                       |
+| `PUT`                    | `/api/policies/:id/rules/reorder`   | Persist the complete rule order            |
+| `POST`                   | `/api/policies/:id/compile-preview` | Compile with diagnostics                   |
+| `GET`, `POST`            | `/api/subscriptions`                | List/create subscriptions                  |
+| `GET`, `PATCH`, `DELETE` | `/api/subscriptions/:id`            | Read/update/delete a subscription          |
+| `POST`                   | `/api/subscriptions/:id/rotate`     | Rotate and display a token once            |
+| `POST`                   | `/api/subscriptions/:id/preview`    | Authenticated masked preview               |
+| `GET`                    | `/sub/:token`                       | Token-authenticated compiled subscription  |
+| `GET`                    | `/api/dashboard`                    | Aggregated operational overview            |
+| `GET`                    | `/api/servers`                      | Server inventory                           |
+| `GET`                    | `/api/xray/status`                  | Agent/Xray status                          |
+| `POST`                   | `/api/xray/restart`                 | Validated fixed restart action             |
+| `GET`                    | `/api/notifications`                | Notification center                        |
+| `PATCH`                  | `/api/notifications/:id/read`       | Mark one notification read                 |
+| `POST`                   | `/api/notifications/read-all`       | Mark all notifications read                |
+| `GET`                    | `/api/audit-logs`                   | Recent audit records                       |
 
 ## Database
 
-The first migration creates `AdminUser`, `Session`, `RecoveryCode`, `ApiToken`, `Server`, `Agent`, `Node`, `NodePool`, `NodePoolMember`, `Notification`, `SecurityEvent`, `AuditLog`, and `SystemSetting`.
+The foundation migration creates `AdminUser`, `Session`, `RecoveryCode`, `ApiToken`, `Server`, `Agent`, `Node`, `NodePool`, `NodePoolMember`, `Notification`, `SecurityEvent`, `AuditLog`, and `SystemSetting`. The additive V0.2 migration creates `Policy`, `PolicyRule`, and `Subscription` without rebuilding or deleting foundation data.
 
 Sensitive values are never stored in plaintext:
 
@@ -200,7 +218,7 @@ apps/
 packages/
   shared/              Shared schemas, API types, event constants
   xray-manager/        Reality adapter and validated config operations
-  policy-core/         Client-independent policy model boundary
+  policy-core/         Normalizer, validator, capability matrix, and client adapters
 docker/                Images, Caddy, nginx, Xray supervisor
 docs/design/           Accepted visual design reference
 ```
@@ -214,16 +232,16 @@ docs/design/           Accepted visual design reference
 - ProxyHub reports SSH/firewall recommendations but does not modify host SSH policy automatically.
 - The V0.1 Agent token is a foundation mechanism; mutually authenticated remote Agent enrollment is planned.
 
+## V0.2 documentation
+
+- [Architecture and data flow](docs/v0.2-architecture.md)
+- [Policy Studio and compiler behavior](docs/policy-studio.md)
+- [Subscription Engine and token security](docs/subscription-engine.md)
+- [Linux VPS deployment smoke test](docs/deployment-smoke-test.md)
+
 ## Roadmap
 
-- **Phase 2:** remote Agent enrollment
-- **Phase 3:** users, plans, subscription tokens and traffic quotas
-- **Phase 4:** Policy Studio, rule sets and proxy groups
-- **Phase 5:** Mihomo compiler and dynamic subscriptions
-- **Phase 6–7:** imports, versions, sing-box compiler and conversion warnings
-- **Phase 8:** automation, health thresholds and Telegram notifications
-- **Phase 9:** API tokens and expanded Security Center
-- **Phase 10:** full multi-server control plane
+V0.2 is intentionally limited to policies, deterministic client adapters, and secure subscriptions. Traffic collection, quotas, billing, remote Agent enrollment, users/plans, imports, automation, and multi-server orchestration remain future work. No V0.3 feature is included in this revision.
 
 ## Contributing
 

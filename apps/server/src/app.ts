@@ -3,11 +3,14 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
+import type { FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import { authRoutes } from './routes/auth.js';
 import { nodeRoutes } from './routes/nodes.js';
 import { poolRoutes } from './routes/pools.js';
 import { operationRoutes } from './routes/operations.js';
+import { policyRoutes } from './routes/policies.js';
+import { publicSubscriptionRoutes, subscriptionRoutes } from './routes/subscriptions.js';
 import { config } from './config.js';
 import { AppError } from './errors.js';
 import { defaultAgentClient, type AgentClient } from './agent-client.js';
@@ -24,6 +27,12 @@ export async function buildApp(options: { agentClient?: AgentClient } = {}) {
         'body.totp',
         'body.token',
       ],
+      serializers: {
+        req: (incoming: FastifyRequest) => ({
+          method: incoming.method,
+          url: incoming.url?.replace(/^(\/sub\/)[^/?]+/, '$1[REDACTED]'),
+        }),
+      },
     },
     trustProxy: config.TRUST_PROXY,
   });
@@ -31,12 +40,6 @@ export async function buildApp(options: { agentClient?: AgentClient } = {}) {
   await app.register(cookie);
   await app.register(cors, { origin: config.WEB_ORIGIN, credentials: true });
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
-
-  app.get('/api/health', async () => ({ success: true, data: { status: 'ok', version: '0.1.0' } }));
-  await app.register(authRoutes, { prefix: '/api/auth' });
-  await app.register(nodeRoutes, { prefix: '/api/nodes', agentClient });
-  await app.register(poolRoutes, { prefix: '/api/node-pools' });
-  await app.register(operationRoutes, { prefix: '/api', agentClient });
 
   app.setNotFoundHandler((_request, reply) =>
     reply
@@ -71,5 +74,14 @@ export async function buildApp(options: { agentClient?: AgentClient } = {}) {
       error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
     });
   });
+
+  app.get('/api/health', async () => ({ success: true, data: { status: 'ok', version: '0.2.0' } }));
+  await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(nodeRoutes, { prefix: '/api/nodes', agentClient });
+  await app.register(poolRoutes, { prefix: '/api/node-pools' });
+  await app.register(policyRoutes, { prefix: '/api/policies' });
+  await app.register(subscriptionRoutes, { prefix: '/api/subscriptions' });
+  await app.register(publicSubscriptionRoutes, { prefix: '/sub' });
+  await app.register(operationRoutes, { prefix: '/api', agentClient });
   return app;
 }

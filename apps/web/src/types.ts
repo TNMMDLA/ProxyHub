@@ -65,3 +65,87 @@ export interface AuditRecord {
   result: string;
   createdAt: string;
 }
+
+export type PolicyAction = 'DIRECT' | 'REJECT' | 'NODE_POOL';
+export type PolicyMatchType =
+  | 'DOMAIN'
+  | 'DOMAIN_SUFFIX'
+  | 'DOMAIN_KEYWORD'
+  | 'DOMAIN_REGEX'
+  | 'IP_CIDR'
+  | 'IP_CIDR6'
+  | 'GEOIP'
+  | 'GEOSITE'
+  | 'DST_PORT'
+  | 'NETWORK';
+export type SubscriptionFormat = 'mihomo' | 'sing-box' | 'raw';
+
+export interface PolicyRuleRecord {
+  id: string;
+  policyId: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  priority: number;
+  matchType: PolicyMatchType;
+  matchValue: string;
+  actionType: PolicyAction;
+  nodePoolId: string | null;
+  nodePool: { id: string; name: string; enabled: boolean } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PolicyRecord {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  revision: number;
+  defaultAction: PolicyAction;
+  defaultNodePoolId: string | null;
+  defaultNodePool: { id: string; name: string; enabled: boolean } | null;
+  rules?: PolicyRuleRecord[];
+  _count: { rules?: number; subscriptions: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompilerDiagnosticRecord {
+  code: string;
+  message: string;
+  adapter: SubscriptionFormat;
+  ruleId?: string;
+  ruleName?: string;
+  ruleType?: PolicyMatchType;
+}
+
+export interface CompilerPreviewRecord {
+  success: boolean;
+  format: SubscriptionFormat;
+  output: string;
+  maskedOutput: string;
+  warnings: CompilerDiagnosticRecord[];
+  errors: CompilerDiagnosticRecord[];
+  metadata: {
+    policyId: string;
+    revision: number;
+    ruleCount: number;
+    nodeCount: number;
+    poolCount: number;
+  };
+}
+
+export interface SubscriptionRecord {
+  id: string;
+  name: string;
+  enabled: boolean;
+  policyId: string;
+  policy: { id: string; name: string; enabled: boolean; revision: number };
+  format: SubscriptionFormat;
+  tokenPrefix: string;
+  expiresAt: string | null;
+  lastAccessAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

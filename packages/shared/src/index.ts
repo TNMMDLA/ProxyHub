@@ -34,6 +34,77 @@ export const createPoolSchema = z.object({
   nodeIds: z.array(z.string().trim().min(1).max(80)).default([]),
 });
 
+export const policyActionSchema = z.enum(['DIRECT', 'REJECT', 'NODE_POOL']);
+export const policyMatchTypeSchema = z.enum([
+  'DOMAIN',
+  'DOMAIN_SUFFIX',
+  'DOMAIN_KEYWORD',
+  'DOMAIN_REGEX',
+  'IP_CIDR',
+  'IP_CIDR6',
+  'GEOIP',
+  'GEOSITE',
+  'DST_PORT',
+  'NETWORK',
+]);
+export const subscriptionFormatSchema = z.enum(['mihomo', 'sing-box', 'raw']);
+
+const policyBaseSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  description: z.string().trim().max(500),
+  enabled: z.boolean(),
+  defaultAction: policyActionSchema,
+  defaultNodePoolId: z.string().trim().min(1).max(80).nullable(),
+});
+
+export const createPolicySchema = policyBaseSchema
+  .partial({ description: true, enabled: true, defaultNodePoolId: true })
+  .extend({
+    description: z.string().trim().max(500).default(''),
+    enabled: z.boolean().default(true),
+    defaultAction: policyActionSchema.default('DIRECT'),
+    defaultNodePoolId: z.string().trim().min(1).max(80).nullable().default(null),
+  });
+export const updatePolicySchema = policyBaseSchema.partial();
+
+export const policyRuleInputSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  description: z.string().trim().max(500).default(''),
+  enabled: z.boolean().default(true),
+  matchType: policyMatchTypeSchema,
+  matchValue: z.string().trim().min(1).max(1000),
+  actionType: policyActionSchema,
+  nodePoolId: z.string().trim().min(1).max(80).nullable().default(null),
+});
+export const updatePolicyRuleSchema = z.object({
+  name: z.string().trim().min(2).max(100).optional(),
+  description: z.string().trim().max(500).optional(),
+  enabled: z.boolean().optional(),
+  matchType: policyMatchTypeSchema.optional(),
+  matchValue: z.string().trim().min(1).max(1000).optional(),
+  actionType: policyActionSchema.optional(),
+  nodePoolId: z.string().trim().min(1).max(80).nullable().optional(),
+});
+export const reorderPolicyRulesSchema = z.object({
+  ruleIds: z.array(z.string().trim().min(1).max(80)).max(1000),
+});
+export const compilePolicySchema = z.object({ format: subscriptionFormatSchema });
+
+const subscriptionBaseSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  policyId: z.string().trim().min(1).max(80),
+  format: subscriptionFormatSchema,
+  enabled: z.boolean(),
+  expiresAt: z.string().datetime({ offset: true }).nullable(),
+});
+export const createSubscriptionSchema = subscriptionBaseSchema
+  .partial({ enabled: true, expiresAt: true })
+  .extend({
+    enabled: z.boolean().default(true),
+    expiresAt: z.string().datetime({ offset: true }).nullable().default(null),
+  });
+export const updateSubscriptionSchema = subscriptionBaseSchema.partial();
+
 export const bootstrapSchema = z.object({
   username: z
     .string()

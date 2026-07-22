@@ -45,7 +45,7 @@ export const operationRoutes: FastifyPluginAsync<{ agentClient: AgentClient }> =
           uptime: uptime(),
           memoryUsage,
           load: loadavg()[0] ?? 0,
-          version: '0.1.0',
+          version: '0.2.0',
           xrayStatus: agentStatus?.xray.status ?? 'UNKNOWN',
         },
         servers,

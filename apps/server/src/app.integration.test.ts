@@ -51,6 +51,10 @@ describe('ProxyHub foundation API', () => {
   let app: FastifyInstance;
   let cookie = '';
   let serverId = '';
+  let policyId = '';
+  let policyPoolId = '';
+  let subscriptionId = '';
+  let subscriptionToken = '';
 
   beforeAll(async () => {
     app = await buildApp({ agentClient });
@@ -243,6 +247,258 @@ describe('ProxyHub foundation API', () => {
       headers: { cookie },
     });
     expect(deleted.statusCode, deleted.body).toBe(200);
+  });
+
+  it('manages policies, ordered rules, adapters and node-pool references', async () => {
+    const node = await prisma.node.findFirstOrThrow();
+    const pool = await app.inject({
+      method: 'POST',
+      url: '/api/node-pools',
+      headers: { cookie },
+      payload: {
+        name: 'Policy Pool',
+        description: 'Compiler integration pool',
+        region: 'Global',
+        strategy: 'MANUAL',
+        enabled: true,
+        nodeIds: [node.id],
+      },
+    });
+    expect(pool.statusCode, pool.body).toBe(201);
+    policyPoolId = pool.json().data.id as string;
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/policies',
+      headers: { cookie },
+      payload: {
+        name: 'Integration Policy',
+        description: 'One policy, multiple adapters',
+        enabled: true,
+        defaultAction: 'DIRECT',
+        defaultNodePoolId: null,
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    policyId = created.json().data.id as string;
+
+    const firstRule = await app.inject({
+      method: 'POST',
+      url: `/api/policies/${policyId}/rules`,
+      headers: { cookie },
+      payload: {
+        name: 'Route example',
+        matchType: 'DOMAIN_SUFFIX',
+        matchValue: 'example.com',
+        actionType: 'NODE_POOL',
+        nodePoolId: policyPoolId,
+        enabled: true,
+      },
+    });
+    const secondRule = await app.inject({
+      method: 'POST',
+      url: `/api/policies/${policyId}/rules`,
+      headers: { cookie },
+      payload: {
+        name: 'Reject private range',
+        matchType: 'IP_CIDR',
+        matchValue: '10.0.0.0/8',
+        actionType: 'REJECT',
+        nodePoolId: null,
+        enabled: true,
+      },
+    });
+    expect(firstRule.statusCode, firstRule.body).toBe(201);
+    expect(secondRule.statusCode, secondRule.body).toBe(201);
+    const firstRuleId = firstRule.json().data.id as string;
+    const secondRuleId = secondRule.json().data.id as string;
+
+    const reordered = await app.inject({
+      method: 'PUT',
+      url: `/api/policies/${policyId}/rules/reorder`,
+      headers: { cookie },
+      payload: { ruleIds: [secondRuleId, firstRuleId] },
+    });
+    expect(reordered.statusCode, reordered.body).toBe(200);
+    const reorderedRules = reordered.json<{ data: Array<{ id: string }> }>().data;
+    expect(reorderedRules.map((rule) => rule.id)).toEqual([secondRuleId, firstRuleId]);
+
+    const updatedRule = await app.inject({
+      method: 'PATCH',
+      url: `/api/policies/${policyId}/rules/${firstRuleId}`,
+      headers: { cookie },
+      payload: { description: 'Updated through the rule API', enabled: false },
+    });
+    expect(updatedRule.statusCode, updatedRule.body).toBe(200);
+    expect(updatedRule.json().data.enabled).toBe(false);
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/policies/${policyId}/rules/${firstRuleId}`,
+      headers: { cookie },
+      payload: { enabled: true },
+    });
+
+    for (const format of ['mihomo', 'sing-box', 'raw']) {
+      const preview = await app.inject({
+        method: 'POST',
+        url: `/api/policies/${policyId}/compile-preview`,
+        headers: { cookie },
+        payload: { format },
+      });
+      expect(preview.statusCode, preview.body).toBe(200);
+      expect(preview.json().data.success).toBe(true);
+      expect(preview.json().data.output.length).toBeGreaterThan(0);
+      expect(preview.json().data.maskedOutput).not.toContain(node.uuid);
+    }
+
+    const blockedDelete = await app.inject({
+      method: 'DELETE',
+      url: `/api/node-pools/${policyPoolId}`,
+      headers: { cookie },
+    });
+    expect(blockedDelete.statusCode).toBe(409);
+    expect(blockedDelete.json().error.code).toBe('NODE_POOL_IN_USE');
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/policies/${policyId}`,
+      headers: { cookie },
+      payload: { enabled: false },
+    });
+    const disabledPreview = await app.inject({
+      method: 'POST',
+      url: `/api/policies/${policyId}/compile-preview`,
+      headers: { cookie },
+      payload: { format: 'mihomo' },
+    });
+    expect(disabledPreview.json().data.success).toBe(false);
+    await expect(
+      prisma.notification.findFirstOrThrow({ where: { eventType: 'POLICY_COMPILE_FAILED' } }),
+    ).resolves.toBeTruthy();
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/policies/${policyId}`,
+      headers: { cookie },
+      payload: { enabled: true },
+    });
+
+    const deletedRule = await app.inject({
+      method: 'DELETE',
+      url: `/api/policies/${policyId}/rules/${secondRuleId}`,
+      headers: { cookie },
+    });
+    expect(deletedRule.statusCode).toBe(200);
+  });
+
+  it('secures subscription tokens, rotation, expiration and public compilation', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/subscriptions',
+      headers: { cookie },
+      payload: {
+        name: 'Integration Subscription',
+        policyId,
+        format: 'raw',
+        enabled: true,
+        expiresAt: null,
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    subscriptionId = created.json().data.subscription.id as string;
+    subscriptionToken = created.json().data.token as string;
+    const stored = await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+    expect(stored.tokenHash).not.toContain(subscriptionToken);
+    expect(stored.tokenPrefix).toBe(subscriptionToken.slice(0, 8));
+
+    const publicResponse = await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` });
+    expect(publicResponse.statusCode, publicResponse.body).toBe(200);
+    expect(publicResponse.headers['content-type']).toContain('text/plain');
+    expect(publicResponse.body).toContain('vless://');
+    expect(publicResponse.headers.etag).toBeTruthy();
+
+    const invalid = await app.inject({ method: 'GET', url: '/sub/not-a-valid-token' });
+    expect(invalid.statusCode).toBe(404);
+    expect(invalid.json().error.code).toBe('SUBSCRIPTION_TOKEN_INVALID');
+
+    const rotated = await app.inject({
+      method: 'POST',
+      url: `/api/subscriptions/${subscriptionId}/rotate-token`,
+      headers: { cookie },
+    });
+    expect(rotated.statusCode, rotated.body).toBe(200);
+    const newToken = rotated.json().data.token as string;
+    expect(newToken).not.toBe(subscriptionToken);
+    expect((await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` })).statusCode).toBe(
+      404,
+    );
+    subscriptionToken = newToken;
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/subscriptions/${subscriptionId}`,
+      headers: { cookie },
+      payload: { enabled: false },
+    });
+    expect((await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` })).statusCode).toBe(
+      403,
+    );
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/subscriptions/${subscriptionId}`,
+      headers: { cookie },
+      payload: { enabled: true, expiresAt: new Date(Date.now() - 60_000).toISOString() },
+    });
+    expect((await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` })).statusCode).toBe(
+      410,
+    );
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/subscriptions/${subscriptionId}`,
+      headers: { cookie },
+      payload: { expiresAt: null },
+    });
+
+    const preview = await app.inject({
+      method: 'POST',
+      url: `/api/subscriptions/${subscriptionId}/preview`,
+      headers: { cookie },
+    });
+    expect(preview.statusCode, preview.body).toBe(200);
+    expect(preview.json().data.format).toBe('raw');
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/subscriptions/${subscriptionId}`,
+      headers: { cookie },
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` })).statusCode).toBe(
+      404,
+    );
+
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `/api/policies/${policyId}`,
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `/api/node-pools/${policyPoolId}`,
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const auditMetadata = (await prisma.auditLog.findMany())
+      .map((entry) => entry.metadata)
+      .join('\n');
+    expect(auditMetadata).not.toContain(subscriptionToken);
   });
 
   it('rolls back the database and records a critical event when Xray rejects a change', async () => {

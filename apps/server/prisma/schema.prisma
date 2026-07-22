@@ -144,6 +144,8 @@ model NodePool {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   members     NodePoolMember[]
+  defaultPolicies Policy[]     @relation("PolicyDefaultNodePool")
+  policyRules     PolicyRule[] @relation("PolicyRuleNodePool")
 }
 
 model NodePoolMember {
@@ -205,3 +207,58 @@ model SystemSetting {
   updatedAt DateTime @updatedAt
 }
 
+model Policy {
+  id                String         @id @default(cuid())
+  name              String         @unique
+  description       String         @default("")
+  enabled           Boolean        @default(true)
+  revision          Int            @default(1)
+  defaultAction     String         @default("DIRECT")
+  defaultNodePoolId String?
+  defaultNodePool   NodePool?      @relation("PolicyDefaultNodePool", fields: [defaultNodePoolId], references: [id], onDelete: Restrict)
+  rules             PolicyRule[]
+  subscriptions     Subscription[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([enabled, updatedAt])
+  @@index([defaultNodePoolId])
+}
+
+model PolicyRule {
+  id          String    @id @default(cuid())
+  policyId    String
+  policy      Policy    @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  name        String
+  description String    @default("")
+  enabled     Boolean   @default(true)
+  priority    Int
+  matchType   String
+  matchValue  String
+  actionType  String
+  nodePoolId  String?
+  nodePool    NodePool? @relation("PolicyRuleNodePool", fields: [nodePoolId], references: [id], onDelete: Restrict)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([policyId, priority])
+  @@index([nodePoolId])
+}
+
+model Subscription {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  enabled      Boolean  @default(true)
+  policyId     String
+  policy       Policy   @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  format       String
+  tokenHash    String   @unique
+  tokenPrefix  String
+  expiresAt    DateTime?
+  lastAccessAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([policyId])
+  @@index([enabled, expiresAt])
+}

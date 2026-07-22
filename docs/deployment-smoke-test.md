@@ -1,6 +1,6 @@
-# ProxyHub V0.1.1 Linux VPS Deployment Smoke Test
+# ProxyHub V0.1.1 / V0.2 Linux VPS Deployment Smoke Test
 
-Run this checklist on a disposable Linux VPS before declaring V0.1.1 production-ready. Do not run destructive or deliberate failure cases against an active production deployment.
+Run this checklist on a disposable Linux VPS before declaring V0.1.1 or V0.2 production-ready. The current release status remains **V0.1.1 Linux Production Smoke Test Pending**. Do not run destructive or deliberate failure cases against an active production deployment.
 
 ## 1. Prerequisites
 
@@ -8,7 +8,7 @@ Run this checklist on a disposable Linux VPS before declaring V0.1.1 production-
 - Public DNS record pointing to the VPS
 - Inbound TCP 80/443 and UDP 443 allowed
 - An additional TCP port available for the Reality node test
-- Repository checked out at the V0.1.1 revision
+- Repository checked out at the V0.2 revision under test
 
 Record these values without committing them:
 
@@ -74,7 +74,7 @@ docker compose exec proxyhub-server \
   pnpm --filter @proxyhub/server exec prisma migrate status
 ```
 
-Expected: one migration is present and the database schema is up to date. Restart the stack once and confirm the SQLite volume retains the same administrator and server records.
+Expected: both the foundation and additive V0.2 migrations are present and the database schema is up to date. Confirm `Policy`, `PolicyRule`, and `Subscription` were added without rebuilding existing tables. Restart the stack once and confirm the SQLite volume retains the same administrator, server, node, and pool records.
 
 ## 5. Backend and HTTPS
 
@@ -162,7 +162,7 @@ If the new config validates but the restarted process or port health fails, veri
 
 ## 10. Restart and health recovery
 
-Use **Servers → Restart Xray**. Verify the request waits for restart acknowledgement and returns only after health is `HEALTHY`.
+Use **Servers -> Restart Xray**. Verify the request waits for restart acknowledgement and returns only after health is `HEALTHY`.
 
 ```bash
 docker compose ps
@@ -184,7 +184,36 @@ Verify success Audit Logs and Notifications exist for applied node changes. Mark
 
 For the staging failure test, verify the audit result is `FAILURE`, the notification level is `CRITICAL`, and sensitive keys are redacted.
 
-## 13. Final acceptance
+## 13. V0.2 Policy Studio and Subscription Engine
+
+### Policy Studio
+
+1. Create an enabled policy and set its default action.
+2. Add at least two rules, reorder them by drag and drop, reload, and confirm the order persists.
+3. Disable a rule and confirm it is excluded from compilation without being deleted.
+4. Compile Mihomo, sing-box, and raw VLESS previews. Confirm repeated compilation is byte-for-byte deterministic.
+5. Confirm unsupported rule types produce visible diagnostics and are never silently ignored.
+6. Reference a disabled or empty node pool and confirm compilation reports a blocking diagnostic.
+7. Confirm deleting a referenced node pool is rejected with its policy/rule references listed.
+
+### Subscription Engine
+
+1. Create one subscription for each supported format and record each returned token only from the one-time modal.
+2. Confirm the database stores a SHA-256 token hash and safe prefix, never the plaintext token.
+3. Request `/sub/<token>` and verify format-specific content type, private cache headers, and ETag behavior (`If-None-Match` returns `304`).
+4. Rotate a token and confirm the old URL immediately returns `404` while the new URL works.
+5. Disable and expire subscriptions and confirm they return `403` and `410` respectively.
+6. Exceed the public endpoint rate limit and confirm `429` without token disclosure in logs.
+7. Verify preview output masks UUIDs by default and full output requires the explicit reveal action.
+8. Verify audit logs and compile-failure notifications contain subscription IDs/prefixes only, never tokens.
+
+### Responsive and runtime checks
+
+1. Exercise Policy Studio and Subscriptions at desktop width and at 390 px.
+2. Confirm cards, dialogs, diagnostics, and navigation remain usable without horizontal page overflow.
+3. Confirm the browser console and failed-network-request list contain no unexpected errors.
+
+## 14. Final acceptance
 
 ```bash
 docker compose ps
@@ -193,4 +222,4 @@ curl --fail --silent --show-error "https://${PANEL_DOMAIN}/api/health"
 docker compose logs --since=10m proxyhub-server proxyhub-agent xray caddy
 ```
 
-V0.1.1 passes only when all services remain healthy, the browser has no runtime errors, successful Node changes reach Xray, failed changes preserve the prior configuration and database state, and pool/audit/notification flows all match the UI.
+V0.1.1 and V0.2 pass only when all services remain healthy, the browser has no runtime errors, successful Node changes reach Xray, failed changes preserve the prior configuration and database state, pool/audit/notification flows match the UI, all policy adapters compile deterministically with explicit diagnostics, and subscription token lifecycle checks pass.
