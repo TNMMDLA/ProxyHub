@@ -15,7 +15,7 @@ RUN pnpm --filter @proxyhub/agent... build
 
 FROM node:24-alpine
 RUN corepack enable
-COPY --from=xray /usr/bin/xray /usr/local/bin/xray
+COPY --from=xray /usr/local/bin/xray /usr/local/bin/xray
 WORKDIR /app
 COPY --from=build /app /app
 EXPOSE 3001
