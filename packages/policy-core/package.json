@@ -1,6 +1,6 @@
 {
   "name": "@proxyhub/policy-core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "typescript": "^5.9.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "yaml": "2.8.1"
   }
 }

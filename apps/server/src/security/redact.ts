@@ -1,14 +1,10 @@
-const SENSITIVE_KEYS = new Set([
-  'password',
-  'currentPassword',
-  'token',
-  'totp',
-  'secret',
-  'privateKey',
-  'recoveryCode',
-  'subscriptionToken',
-  'tokenHash',
-]);
+function isSensitiveKey(key: string): boolean {
+  const normalized = key.replaceAll(/[^a-zA-Z]/g, '').toLowerCase();
+  if (normalized.endsWith('prefix')) return false;
+  return ['password', 'token', 'totp', 'secret', 'privatekey', 'recoverycode'].some((part) =>
+    normalized.includes(part),
+  );
+}
 
 export function redactSensitive(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redactSensitive);
@@ -16,7 +12,7 @@ export function redactSensitive(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [
       key,
-      SENSITIVE_KEYS.has(key) ? '[REDACTED]' : redactSensitive(item),
+      isSensitiveKey(key) ? '[REDACTED]' : redactSensitive(item),
     ]),
   );
 }

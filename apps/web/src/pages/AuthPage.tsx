@@ -69,7 +69,7 @@ export function AuthPage() {
             </li>
           </ul>
         </div>
-        <small>ProxyHub v0.1 Foundation</small>
+        <small>ProxyHub v0.2.1 · Pre-production</small>
       </section>
       <section className="auth-form-wrap">
         <form

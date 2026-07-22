@@ -14,7 +14,7 @@ await prisma.server.upsert({
     hostname: hostname(),
     ip: '127.0.0.1',
     status: 'ONLINE',
-    agentVersion: '0.2.0',
+    agentVersion: '0.2.1',
     lastHeartbeat: new Date(),
   },
 });

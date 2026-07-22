@@ -113,6 +113,7 @@ export interface PolicyRecord {
 
 export interface CompilerDiagnosticRecord {
   code: string;
+  severity: 'WARNING' | 'ERROR';
   message: string;
   adapter: SubscriptionFormat;
   ruleId?: string;
@@ -133,6 +134,12 @@ export interface CompilerPreviewRecord {
     ruleCount: number;
     nodeCount: number;
     poolCount: number;
+    adapter: {
+      adapterName: SubscriptionFormat;
+      adapterVersion: string;
+      validatedAgainst: string;
+      capabilities: { routing: boolean; ruleTypes: PolicyMatchType[] };
+    };
   };
 }
 

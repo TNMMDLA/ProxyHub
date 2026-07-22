@@ -4,7 +4,7 @@ ProxyHub is a modern, open-source proxy infrastructure management platform for L
 
 ![ProxyHub dashboard design](docs/design/proxyhub-dashboard-concept.png)
 
-> Status: V0.2 Policy Studio & Subscription Engine implemented and locally verified. **V0.1.1 Linux Production Smoke Test Pending**; do not treat this revision as production-accepted until the VPS checklist passes.
+> Status: **V0.2.1 Development / Pre-production**. Compiler fixtures, migration upgrades, subscription security, and fixed-version client-core checks are automated. **V0.1.1 Linux Production Smoke Test Pending**; passing CI does not constitute production acceptance.
 
 ### V0.1.1 implementation notes
 
@@ -138,9 +138,13 @@ pnpm lint
 pnpm format:check
 pnpm test
 pnpm build
+pnpm test:compat
+pnpm test:migration
+# Windows: download, checksum, and validate with the pinned official client cores
+pnpm compat:validate:windows
 ```
 
-The integration suite creates an isolated SQLite database, applies every real migration, and covers administrator bootstrap, sessions, TOTP, recovery codes, transactional Reality node synchronization, failed-apply rollback, node-pool replacement, dashboard health aggregation, policy and rule lifecycle, deterministic compilation, subscription token rotation/expiry, notifications, and audit logs.
+The integration suite creates isolated SQLite databases, tests both a fresh migration and a populated V0.1.1-to-V0.2 upgrade, and covers administrator bootstrap, sessions, TOTP, recovery codes, transactional Reality node synchronization, failed-apply rollback, node-pool replacement, dashboard health aggregation, policy and rule lifecycle, deterministic compilation, subscription token rotation/expiry, rate limiting, ETag/cache behavior, notifications, and audit logs. GitHub Actions additionally builds every Compose image and validates generated configurations with checksum-pinned official Mihomo and sing-box CLI releases.
 
 The complete Linux deployment acceptance procedure is in [docs/deployment-smoke-test.md](docs/deployment-smoke-test.md).
 
@@ -159,43 +163,43 @@ All responses use `{ "success": true, "data": ... }` or:
 }
 ```
 
-| Method                   | Path                                | Purpose                                    |
-| ------------------------ | ----------------------------------- | ------------------------------------------ |
-| `GET`                    | `/api/health`                       | Controller health                          |
-| `GET`                    | `/api/auth/status`                  | First-run bootstrap state                  |
-| `POST`                   | `/api/auth/bootstrap`               | Create the first administrator             |
-| `POST`                   | `/api/auth/login`                   | Password plus optional TOTP/recovery login |
-| `POST`                   | `/api/auth/logout`                  | Revoke the current session                 |
-| `GET`                    | `/api/auth/me`                      | Current administrator                      |
-| `GET`, `DELETE`          | `/api/auth/sessions`                | List sessions / log out all                |
-| `POST`                   | `/api/auth/2fa/setup`               | Generate TOTP enrollment                   |
-| `POST`                   | `/api/auth/2fa/enable`              | Verify TOTP and issue recovery codes       |
-| `GET`, `POST`            | `/api/nodes`                        | List/create Reality nodes                  |
-| `PATCH`, `DELETE`        | `/api/nodes/:id`                    | Update/delete a node                       |
-| `POST`                   | `/api/nodes/:id/clone`              | Clone with fresh credentials               |
-| `GET`                    | `/api/nodes/:id/share`              | VLESS URI and QR code                      |
-| `GET`, `POST`            | `/api/node-pools`                   | List/create node pools                     |
-| `PUT`, `DELETE`          | `/api/node-pools/:id`               | Replace/delete a pool                      |
-| `GET`, `POST`            | `/api/policies`                     | List/create policies                       |
-| `GET`, `PATCH`, `DELETE` | `/api/policies/:id`                 | Read/update/delete a policy                |
-| `POST`                   | `/api/policies/:id/duplicate`       | Duplicate a policy and its rules           |
-| `POST`                   | `/api/policies/:id/rules`           | Add an ordered policy rule                 |
-| `PATCH`, `DELETE`        | `/api/policies/:id/rules/:ruleId`   | Update/delete a rule                       |
-| `PUT`                    | `/api/policies/:id/rules/reorder`   | Persist the complete rule order            |
-| `POST`                   | `/api/policies/:id/compile-preview` | Compile with diagnostics                   |
-| `GET`, `POST`            | `/api/subscriptions`                | List/create subscriptions                  |
-| `GET`, `PATCH`, `DELETE` | `/api/subscriptions/:id`            | Read/update/delete a subscription          |
-| `POST`                   | `/api/subscriptions/:id/rotate`     | Rotate and display a token once            |
-| `POST`                   | `/api/subscriptions/:id/preview`    | Authenticated masked preview               |
-| `GET`                    | `/sub/:token`                       | Token-authenticated compiled subscription  |
-| `GET`                    | `/api/dashboard`                    | Aggregated operational overview            |
-| `GET`                    | `/api/servers`                      | Server inventory                           |
-| `GET`                    | `/api/xray/status`                  | Agent/Xray status                          |
-| `POST`                   | `/api/xray/restart`                 | Validated fixed restart action             |
-| `GET`                    | `/api/notifications`                | Notification center                        |
-| `PATCH`                  | `/api/notifications/:id/read`       | Mark one notification read                 |
-| `POST`                   | `/api/notifications/read-all`       | Mark all notifications read                |
-| `GET`                    | `/api/audit-logs`                   | Recent audit records                       |
+| Method                   | Path                                  | Purpose                                    |
+| ------------------------ | ------------------------------------- | ------------------------------------------ |
+| `GET`                    | `/api/health`                         | Controller health                          |
+| `GET`                    | `/api/auth/status`                    | First-run bootstrap state                  |
+| `POST`                   | `/api/auth/bootstrap`                 | Create the first administrator             |
+| `POST`                   | `/api/auth/login`                     | Password plus optional TOTP/recovery login |
+| `POST`                   | `/api/auth/logout`                    | Revoke the current session                 |
+| `GET`                    | `/api/auth/me`                        | Current administrator                      |
+| `GET`, `DELETE`          | `/api/auth/sessions`                  | List sessions / log out all                |
+| `POST`                   | `/api/auth/2fa/setup`                 | Generate TOTP enrollment                   |
+| `POST`                   | `/api/auth/2fa/enable`                | Verify TOTP and issue recovery codes       |
+| `GET`, `POST`            | `/api/nodes`                          | List/create Reality nodes                  |
+| `PATCH`, `DELETE`        | `/api/nodes/:id`                      | Update/delete a node                       |
+| `POST`                   | `/api/nodes/:id/clone`                | Clone with fresh credentials               |
+| `GET`                    | `/api/nodes/:id/share`                | VLESS URI and QR code                      |
+| `GET`, `POST`            | `/api/node-pools`                     | List/create node pools                     |
+| `PUT`, `DELETE`          | `/api/node-pools/:id`                 | Replace/delete a pool                      |
+| `GET`, `POST`            | `/api/policies`                       | List/create policies                       |
+| `GET`, `PATCH`, `DELETE` | `/api/policies/:id`                   | Read/update/delete a policy                |
+| `POST`                   | `/api/policies/:id/duplicate`         | Duplicate a policy and its rules           |
+| `POST`                   | `/api/policies/:id/rules`             | Add an ordered policy rule                 |
+| `PATCH`, `DELETE`        | `/api/policies/:id/rules/:ruleId`     | Update/delete a rule                       |
+| `PUT`                    | `/api/policies/:id/rules/reorder`     | Persist the complete rule order            |
+| `POST`                   | `/api/policies/:id/compile-preview`   | Compile with diagnostics                   |
+| `GET`, `POST`            | `/api/subscriptions`                  | List/create subscriptions                  |
+| `GET`, `PATCH`, `DELETE` | `/api/subscriptions/:id`              | Read/update/delete a subscription          |
+| `POST`                   | `/api/subscriptions/:id/rotate-token` | Rotate and display a token once            |
+| `POST`                   | `/api/subscriptions/:id/preview`      | Authenticated masked preview               |
+| `GET`                    | `/sub/:token`                         | Token-authenticated compiled subscription  |
+| `GET`                    | `/api/dashboard`                      | Aggregated operational overview            |
+| `GET`                    | `/api/servers`                        | Server inventory                           |
+| `GET`                    | `/api/xray/status`                    | Agent/Xray status                          |
+| `POST`                   | `/api/xray/restart`                   | Validated fixed restart action             |
+| `GET`                    | `/api/notifications`                  | Notification center                        |
+| `PATCH`                  | `/api/notifications/:id/read`         | Mark one notification read                 |
+| `POST`                   | `/api/notifications/read-all`         | Mark all notifications read                |
+| `GET`                    | `/api/audit-logs`                     | Recent audit records                       |
 
 ## Database
 
@@ -237,6 +241,8 @@ docs/design/           Accepted visual design reference
 - [Architecture and data flow](docs/v0.2-architecture.md)
 - [Policy Studio and compiler behavior](docs/policy-studio.md)
 - [Subscription Engine and token security](docs/subscription-engine.md)
+- [V0.2.1 stabilization scope and evidence](docs/v0.2.1-stabilization.md)
+- [Subscription compatibility matrix](docs/subscription-compatibility.md)
 - [Linux VPS deployment smoke test](docs/deployment-smoke-test.md)
 
 ## Roadmap

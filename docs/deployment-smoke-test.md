@@ -1,6 +1,6 @@
-# ProxyHub V0.1.1 / V0.2 Linux VPS Deployment Smoke Test
+# ProxyHub V0.1.1 / V0.2.1 Linux VPS Deployment Smoke Test
 
-Run this checklist on a disposable Linux VPS before declaring V0.1.1 or V0.2 production-ready. The current release status remains **V0.1.1 Linux Production Smoke Test Pending**. Do not run destructive or deliberate failure cases against an active production deployment.
+Run this checklist on a disposable Linux VPS before declaring V0.1.1 or V0.2.1 production-ready. The current release status remains **V0.1.1 Linux Production Smoke Test Pending**. A green CI run is necessary but is not a substitute for this host-level test. Do not run destructive or deliberate failure cases against an active production deployment.
 
 ## 1. Prerequisites
 
@@ -8,7 +8,7 @@ Run this checklist on a disposable Linux VPS before declaring V0.1.1 or V0.2 pro
 - Public DNS record pointing to the VPS
 - Inbound TCP 80/443 and UDP 443 allowed
 - An additional TCP port available for the Reality node test
-- Repository checked out at the V0.2 revision under test
+- Repository checked out at the V0.2.1 revision under test
 
 Record these values without committing them:
 
@@ -60,6 +60,15 @@ Expected services:
 - `caddy`: running
 
 The Xray build must resolve the fixed `ghcr.io/xtls/xray-core:26.5.9` image, never `latest`.
+
+Before startup, also run the same Linux compatibility gate used by CI:
+
+```bash
+pnpm install --frozen-lockfile
+bash scripts/compat/validate-linux.sh
+```
+
+Expected: release-asset checksums match and both Mihomo `v1.19.28` and sing-box `1.13.12` accept the generated configuration. This validates the official CLI cores, not any GUI client's import behavior.
 
 Inspect startup without exposing environment values:
 
@@ -222,4 +231,4 @@ curl --fail --silent --show-error "https://${PANEL_DOMAIN}/api/health"
 docker compose logs --since=10m proxyhub-server proxyhub-agent xray caddy
 ```
 
-V0.1.1 and V0.2 pass only when all services remain healthy, the browser has no runtime errors, successful Node changes reach Xray, failed changes preserve the prior configuration and database state, pool/audit/notification flows match the UI, all policy adapters compile deterministically with explicit diagnostics, and subscription token lifecycle checks pass.
+V0.1.1 and V0.2.1 pass only when all services remain healthy, the browser has no runtime errors, successful Node changes reach Xray, failed changes preserve the prior configuration and database state, pool/audit/notification flows match the UI, all policy adapters compile deterministically with explicit diagnostics, and subscription token lifecycle checks pass. Separately record GUI import results for the clients listed in the compatibility matrix; do not infer GUI compatibility from a CLI-only pass.

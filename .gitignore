@@ -8,5 +8,6 @@ dist/
 coverage/
 playwright-report/
 test-results/
+.tmp/
 apps/server/data/
 apps/agent/data/

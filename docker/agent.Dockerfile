@@ -7,7 +7,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* tsconfig.base.json ./
 COPY apps/agent/package.json apps/agent/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/xray-manager/package.json packages/xray-manager/package.json
-RUN pnpm install --filter @proxyhub/agent... --frozen-lockfile=false
+RUN pnpm install --filter @proxyhub/agent... --frozen-lockfile
 COPY apps/agent apps/agent
 COPY packages/shared packages/shared
 COPY packages/xray-manager packages/xray-manager

@@ -1,4 +1,7 @@
 import { authenticator } from 'otplib';
+import { mkdtemp, readFile, rm, rmdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { XrayHealthStatus } from '@proxyhub/shared';
@@ -440,32 +443,98 @@ describe('ProxyHub foundation API', () => {
     expect(created.statusCode, created.body).toBe(201);
     subscriptionId = created.json().data.subscription.id as string;
     subscriptionToken = created.json().data.token as string;
+    const originalToken = subscriptionToken;
+    expect(Buffer.from(subscriptionToken, 'base64url')).toHaveLength(32);
+    expect(JSON.stringify(created.json().data.subscription)).not.toContain('tokenHash');
     const stored = await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+    expect(stored.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(stored.tokenHash).not.toContain(subscriptionToken);
     expect(stored.tokenPrefix).toBe(subscriptionToken.slice(0, 8));
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/api/subscriptions',
+      headers: { cookie },
+    });
+    const fetched = await app.inject({
+      method: 'GET',
+      url: `/api/subscriptions/${subscriptionId}`,
+      headers: { cookie },
+    });
+    expect(listed.body).not.toContain(stored.tokenHash);
+    expect(fetched.body).not.toContain(stored.tokenHash);
 
     const publicResponse = await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` });
     expect(publicResponse.statusCode, publicResponse.body).toBe(200);
     expect(publicResponse.headers['content-type']).toContain('text/plain');
     expect(publicResponse.body).toContain('vless://');
     expect(publicResponse.headers.etag).toBeTruthy();
+    expect(publicResponse.headers['cache-control']).toBe('private, no-store');
+    const firstEtag = publicResponse.headers.etag;
+
+    const notModified = await app.inject({
+      method: 'GET',
+      url: `/sub/${subscriptionToken}`,
+      headers: { 'if-none-match': firstEtag },
+    });
+    expect(notModified.statusCode).toBe(304);
+    expect(notModified.headers.etag).toBe(firstEtag);
+    expect(notModified.headers['cache-control']).toBe('private, no-store');
+    const stable = await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` });
+    expect(stable.headers.etag).toBe(firstEtag);
+    expect(stable.body).toBe(publicResponse.body);
+    expect(
+      (await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId } })).lastAccessAt,
+    ).not.toBeNull();
+
+    const contentNode = await prisma.node.findFirstOrThrow({ where: { enabled: true } });
+    await prisma.node.update({
+      where: { id: contentNode.id },
+      data: { name: `${contentNode.name} ETag Change` },
+    });
+    const changed = await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` });
+    expect(changed.headers.etag).not.toBe(firstEtag);
+    await prisma.node.update({ where: { id: contentNode.id }, data: { name: contentNode.name } });
+
+    const logDirectory = await mkdtemp(join(tmpdir(), 'proxyhub-log-test-'));
+    const logFile = join(logDirectory, 'server.log');
+    const loggingApp = await buildApp({ agentClient, logFile });
+    try {
+      expect(
+        (await loggingApp.inject({ method: 'GET', url: `/sub/${subscriptionToken}` })).statusCode,
+      ).toBe(200);
+    } finally {
+      await loggingApp.close();
+    }
+    const capturedLogs = await readFile(logFile, 'utf8');
+    expect(capturedLogs).not.toContain(subscriptionToken);
+    expect(capturedLogs).toContain('/sub/[REDACTED]');
+    await rm(logFile, { force: true });
+    await rmdir(logDirectory);
 
     const invalid = await app.inject({ method: 'GET', url: '/sub/not-a-valid-token' });
     expect(invalid.statusCode).toBe(404);
     expect(invalid.json().error.code).toBe('SUBSCRIPTION_TOKEN_INVALID');
 
-    const rotated = await app.inject({
-      method: 'POST',
-      url: `/api/subscriptions/${subscriptionId}/rotate-token`,
-      headers: { cookie },
-    });
+    const [rotated, racingOldRequest] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/subscriptions/${subscriptionId}/rotate-token`,
+        headers: { cookie },
+      }),
+      app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` }),
+    ]);
     expect(rotated.statusCode, rotated.body).toBe(200);
+    expect([200, 404]).toContain(racingOldRequest.statusCode);
     const newToken = rotated.json().data.token as string;
     expect(newToken).not.toBe(subscriptionToken);
-    expect((await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` })).statusCode).toBe(
-      404,
-    );
+    const finalOldResponse = await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` });
+    expect(finalOldResponse.statusCode).toBe(404);
+    expect(finalOldResponse.json()).toEqual(invalid.json());
     subscriptionToken = newToken;
+    expect((await app.inject({ method: 'GET', url: `/sub/${subscriptionToken}` })).statusCode).toBe(
+      200,
+    );
 
     await app.inject({
       method: 'PATCH',
@@ -491,6 +560,35 @@ describe('ProxyHub foundation API', () => {
       headers: { cookie },
       payload: { expiresAt: null },
     });
+
+    await prisma.policy.update({ where: { id: policyId }, data: { enabled: false } });
+    const compileFailure = await app.inject({
+      method: 'GET',
+      url: `/sub/${subscriptionToken}`,
+    });
+    expect(compileFailure.statusCode).toBe(422);
+    expect(compileFailure.json()).toEqual({
+      success: false,
+      error: {
+        code: 'SUBSCRIPTION_COMPILE_FAILED',
+        message: 'Subscription content is temporarily unavailable',
+      },
+    });
+    expect(compileFailure.body).not.toContain(policyId);
+    expect(compileFailure.body).not.toContain('POLICY_DISABLED');
+    await prisma.policy.update({ where: { id: policyId }, data: { enabled: true } });
+
+    const rateLimitedResponses = [];
+    for (let index = 0; index < 31; index += 1) {
+      rateLimitedResponses.push(
+        await app.inject({
+          method: 'GET',
+          url: '/sub/rate-limit-probe',
+          remoteAddress: '198.51.100.77',
+        }),
+      );
+    }
+    expect(rateLimitedResponses.some((response) => response.statusCode === 429)).toBe(true);
 
     const preview = await app.inject({
       method: 'POST',
@@ -533,6 +631,12 @@ describe('ProxyHub foundation API', () => {
       .map((entry) => entry.metadata)
       .join('\n');
     expect(auditMetadata).not.toContain(subscriptionToken);
+    expect(auditMetadata).not.toContain(originalToken);
+    const notificationContent = (await prisma.notification.findMany())
+      .map((notification) => `${notification.title}\n${notification.message}`)
+      .join('\n');
+    expect(notificationContent).not.toContain(subscriptionToken);
+    expect(notificationContent).not.toContain(originalToken);
   });
 
   it('rolls back the database and records a critical event when Xray rejects a change', async () => {

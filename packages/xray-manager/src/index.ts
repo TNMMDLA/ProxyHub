@@ -1,6 +1,7 @@
 import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, copyFile, rename, rm, writeFile } from 'node:fs/promises';
+import { isIP } from 'node:net';
 import { spawn } from 'node:child_process';
 
 export interface RealityCredentials {
@@ -186,6 +187,11 @@ export function createVlessUri(node: {
   shortId: string;
   name: string;
 }): string {
+  const strictComponent = (value: string) =>
+    encodeURIComponent(value).replace(
+      /[!'()*]/g,
+      (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
   const params = new URLSearchParams({
     encryption: 'none',
     flow: node.flow,
@@ -196,5 +202,6 @@ export function createVlessUri(node: {
     sid: node.shortId,
     type: 'tcp',
   });
-  return `vless://${node.uuid}@${node.host}:${String(node.port)}?${params.toString()}#${encodeURIComponent(node.name)}`;
+  const host = isIP(node.host) === 6 ? `[${node.host}]` : node.host;
+  return `vless://${node.uuid}@${host}:${String(node.port)}?${params.toString()}#${strictComponent(node.name)}`;
 }

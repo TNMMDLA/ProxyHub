@@ -15,11 +15,16 @@ import { config } from './config.js';
 import { AppError } from './errors.js';
 import { defaultAgentClient, type AgentClient } from './agent-client.js';
 
-export async function buildApp(options: { agentClient?: AgentClient } = {}) {
+export function redactRequestUrl(url: string | undefined): string | undefined {
+  return url?.replace(/(\/sub\/)[^/?#]+/g, '$1[REDACTED]');
+}
+
+export async function buildApp(options: { agentClient?: AgentClient; logFile?: string } = {}) {
   const agentClient = options.agentClient ?? defaultAgentClient;
   const app = Fastify({
     logger: {
-      level: config.NODE_ENV === 'test' ? 'silent' : 'info',
+      level: options.logFile ? 'info' : config.NODE_ENV === 'test' ? 'silent' : 'info',
+      ...(options.logFile ? { file: options.logFile } : {}),
       redact: [
         'req.headers.authorization',
         'req.headers.cookie',
@@ -30,7 +35,7 @@ export async function buildApp(options: { agentClient?: AgentClient } = {}) {
       serializers: {
         req: (incoming: FastifyRequest) => ({
           method: incoming.method,
-          url: incoming.url?.replace(/^(\/sub\/)[^/?]+/, '$1[REDACTED]'),
+          url: redactRequestUrl(incoming.url) ?? '',
         }),
       },
     },
@@ -68,6 +73,11 @@ export async function buildApp(options: { agentClient?: AgentClient } = {}) {
         success: false,
         error: { code: 'CONFLICT', message: 'A record with these values already exists' },
       });
+    if ((error as { statusCode?: number }).statusCode === 429)
+      return reply.code(429).send({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'Too many requests; try again later' },
+      });
     request.log.error(error);
     return reply.code(500).send({
       success: false,
@@ -75,7 +85,7 @@ export async function buildApp(options: { agentClient?: AgentClient } = {}) {
     });
   });
 
-  app.get('/api/health', async () => ({ success: true, data: { status: 'ok', version: '0.2.0' } }));
+  app.get('/api/health', async () => ({ success: true, data: { status: 'ok', version: '0.2.1' } }));
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(nodeRoutes, { prefix: '/api/nodes', agentClient });
   await app.register(poolRoutes, { prefix: '/api/node-pools' });

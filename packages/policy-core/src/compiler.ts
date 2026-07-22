@@ -1,6 +1,7 @@
 import { compileMihomo } from './adapters/mihomo.js';
 import { compileRaw } from './adapters/raw.js';
 import { compileSingBox } from './adapters/singbox.js';
+import { ADAPTER_METADATA } from './capabilities.js';
 import { normalizePolicyInput } from './normalizer.js';
 import type { CompilerFormat, CompilerResult, PolicyCompileInput } from './types.js';
 import { validatePolicy } from './validator.js';
@@ -29,6 +30,7 @@ export function compilePolicy(input: PolicyCompileInput, format: CompilerFormat)
       ruleCount: normalized.rules.length,
       nodeCount: normalized.nodes.length,
       poolCount: normalized.nodePools.length,
+      adapter: ADAPTER_METADATA[format],
     },
   };
 }

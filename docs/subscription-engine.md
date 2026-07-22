@@ -21,7 +21,7 @@ Rotation replaces the hash atomically, so the old URL immediately returns `SUBSC
 4. Policy exists and is enabled;
 5. policy-core compilation succeeds.
 
-Responses use format-appropriate content types, `Cache-Control: private, no-cache`, and a SHA-256 ETag. Successful access updates `lastAccessAt`. The endpoint is rate limited. Automatic request logs redact the token path.
+Responses use format-appropriate content types, `Cache-Control: private, no-store`, and a content-derived SHA-256 ETag. Both `200` and conditional `304` accesses update `lastAccessAt`; that database timestamp never changes the content or ETag. The credential-bearing response is deliberately not cacheable by shared or private caches. The endpoint is limited to 30 requests per minute per effective client IP. `TRUST_PROXY` is disabled by default outside Compose and must only be enabled behind the trusted Caddy hop. Automatic request logs replace the complete token path segment with `[REDACTED]`.
 
 Query parameters cannot override the administrator-bound format.
 
@@ -30,9 +30,11 @@ Query parameters cannot override the administrator-bound format.
 - Invalid/rotated token: `404 SUBSCRIPTION_TOKEN_INVALID`
 - Disabled subscription: `403 SUBSCRIPTION_DISABLED`
 - Expired subscription: `410 SUBSCRIPTION_EXPIRED`
-- Invalid policy/compiler failure: `422 SUBSCRIPTION_COMPILE_FAILED`
+- Invalid policy/compiler failure: `422 SUBSCRIPTION_COMPILE_FAILED` with a stable external message and no rule/database identifiers
 
 Compile failures create a critical notification. Successful routine fetches do not create notifications, preventing notification spam.
+
+Administrator list/detail responses expose only the safe token prefix, never `tokenHash`. An invalid token and a rotated token return the same `404` body. Enabled/expired state responses remain distinct for a caller already possessing an unguessable 256-bit token; this is an intentional operational tradeoff, not a searchable identifier surface.
 
 ## Release status
 

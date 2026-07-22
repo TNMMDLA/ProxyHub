@@ -79,7 +79,7 @@ app.get('/status', async () => {
   return {
     success: true,
     data: {
-      agent: { version: '0.2.0', hostname: hostname(), uptime: uptime() },
+      agent: { version: '0.2.1', hostname: hostname(), uptime: uptime() },
       system: {
         cpuCount: cpus().length,
         load: loadavg()[0] ?? 0,

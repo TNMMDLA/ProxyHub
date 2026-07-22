@@ -9,7 +9,17 @@ import { AppError } from '../errors.js';
 import { compileStoredPolicy, maskCompilerOutput } from '../policy-service.js';
 import { hashToken, newOpaqueToken } from '../security/crypto.js';
 
-const subscriptionInclude = {
+const subscriptionSelect = {
+  id: true,
+  name: true,
+  enabled: true,
+  policyId: true,
+  format: true,
+  tokenPrefix: true,
+  expiresAt: true,
+  lastAccessAt: true,
+  createdAt: true,
+  updatedAt: true,
   policy: { select: { id: true, name: true, enabled: true, revision: true } },
 } as const;
 
@@ -45,7 +55,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', { preHandler: requireRole('ADMIN', 'OPERATOR', 'VIEWER') }, async () => ({
     success: true,
     data: await prisma.subscription.findMany({
-      include: subscriptionInclude,
+      select: subscriptionSelect,
       orderBy: { createdAt: 'desc' },
     }),
   }));
@@ -64,7 +74,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
         tokenHash: issued.tokenHash,
         tokenPrefix: issued.tokenPrefix,
       },
-      include: subscriptionInclude,
+      select: subscriptionSelect,
     });
     await audit(request, 'SUBSCRIPTION_CREATED', 'Subscription', 'SUCCESS', subscription.id, {
       name: subscription.name,
@@ -80,7 +90,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
   app.get('/:id', { preHandler: requireRole('ADMIN', 'OPERATOR', 'VIEWER') }, async (request) => {
     const subscription = await prisma.subscription.findUnique({
       where: { id: idFrom(request) },
-      include: subscriptionInclude,
+      select: subscriptionSelect,
     });
     if (!subscription) throw new AppError('SUBSCRIPTION_NOT_FOUND', 'Subscription not found', 404);
     return { success: true, data: subscription };
@@ -103,7 +113,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
           ? { expiresAt: patch.expiresAt ? new Date(patch.expiresAt) : null }
           : {}),
       },
-      include: subscriptionInclude,
+      select: subscriptionSelect,
     });
     const action =
       patch.enabled === undefined
@@ -129,7 +139,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
       const subscription = await prisma.subscription.update({
         where: { id },
         data: { tokenHash: issued.tokenHash, tokenPrefix: issued.tokenPrefix },
-        include: subscriptionInclude,
+        select: subscriptionSelect,
       });
       await audit(request, 'SUBSCRIPTION_TOKEN_ROTATED', 'Subscription', 'SUCCESS', id, {
         oldTokenPrefix: current.tokenPrefix,
@@ -209,7 +219,7 @@ export const publicSubscriptionRoutes: FastifyPluginAsync = async (app) => {
           subscription.policyId,
           subscription.format as CompilerFormat,
         );
-      } catch (error) {
+      } catch {
         await prisma.notification.create({
           data: {
             level: 'CRITICAL',
@@ -218,26 +228,27 @@ export const publicSubscriptionRoutes: FastifyPluginAsync = async (app) => {
             eventType: 'SUBSCRIPTION_COMPILE_FAILED',
           },
         });
-        throw error;
+        throw new AppError(
+          'SUBSCRIPTION_COMPILE_FAILED',
+          'Subscription content is temporarily unavailable',
+          422,
+        );
       }
       const output = compiled.result.output;
       const etag = `"${createHash('sha256').update(output).digest('hex')}"`;
-      if (request.headers['if-none-match'] === etag) return reply.code(304).send();
-      await prisma.subscription.update({
-        where: { id: subscription.id },
-        data: { lastAccessAt: new Date() },
-      });
       const contentType =
         subscription.format === 'mihomo'
           ? 'text/yaml; charset=utf-8'
           : subscription.format === 'sing-box'
             ? 'application/json; charset=utf-8'
             : 'text/plain; charset=utf-8';
-      return reply
-        .type(contentType)
-        .header('cache-control', 'private, no-cache')
-        .header('etag', etag)
-        .send(output);
+      reply.type(contentType).header('cache-control', 'private, no-store').header('etag', etag);
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { lastAccessAt: new Date() },
+      });
+      if (request.headers['if-none-match'] === etag) return reply.code(304).send();
+      return reply.send(output);
     },
   );
 };

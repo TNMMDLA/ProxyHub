@@ -1,0 +1,158 @@
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { DatabaseSync } from 'node:sqlite';
+import { afterEach, describe, expect, it } from 'vitest';
+
+const root = resolve(import.meta.dirname, '../../..');
+const schema = join(root, 'apps/server/prisma/schema.prisma');
+const migrations = join(root, 'apps/server/prisma/migrations');
+const require = createRequire(import.meta.url);
+const prismaCli = require.resolve('prisma/build/index.js');
+const temporaryDirectories: string[] = [];
+
+function databaseUrl(path: string): string {
+  return `file:${path.replaceAll('\\', '/')}`;
+}
+
+function prisma(args: string[], databasePath: string): void {
+  execFileSync(process.execPath, [prismaCli, ...args, '--schema', schema], {
+    cwd: root,
+    env: { ...process.env, DATABASE_URL: databaseUrl(databasePath) },
+    stdio: 'pipe',
+  });
+}
+
+function tableNames(database: DatabaseSync): string[] {
+  return (
+    database
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .all() as Array<{ name: string }>
+  ).map((row) => row.name);
+}
+
+async function temporaryDatabase(name: string): Promise<{ directory: string; path: string }> {
+  const directory = await mkdtemp(join(tmpdir(), `proxyhub-${name}-`));
+  temporaryDirectories.push(directory);
+  return { directory, path: join(directory, 'proxyhub.db') };
+}
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
+
+describe('Prisma migration compatibility', () => {
+  it('creates the complete V0.2 schema from an empty database', async () => {
+    const databasePath = (await temporaryDatabase('fresh')).path;
+    new DatabaseSync(databasePath).close();
+    prisma(['migrate', 'deploy'], databasePath);
+
+    const database = new DatabaseSync(databasePath);
+    try {
+      const tables = tableNames(database);
+      for (const table of [
+        'AdminUser',
+        'Node',
+        'NodePool',
+        'Policy',
+        'PolicyRule',
+        'Subscription',
+      ]) {
+        expect(tables).toContain(table);
+      }
+      expect(
+        database.prepare('SELECT COUNT(*) AS count FROM _prisma_migrations').get(),
+      ).toMatchObject({ count: 2 });
+      expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('upgrades a populated V0.1.1 database without losing auth, nodes, or pools', async () => {
+    const databasePath = (await temporaryDatabase('upgrade')).path;
+    const database = new DatabaseSync(databasePath);
+    database.exec('PRAGMA foreign_keys = ON');
+    database.exec(readFileSync(join(migrations, '20260722000100_init/migration.sql'), 'utf8'));
+    database.exec(`
+      INSERT INTO "AdminUser" ("id", "username", "passwordHash", "updatedAt")
+        VALUES ('admin-v011', 'recovery-admin', 'argon2id-sentinel', CURRENT_TIMESTAMP);
+      INSERT INTO "Session" ("id", "tokenHash", "userId", "ip", "userAgent", "expiresAt")
+        VALUES ('session-v011', 'session-hash-sentinel', 'admin-v011', '127.0.0.1', 'migration-test', '2099-01-01T00:00:00.000Z');
+      INSERT INTO "Server" ("id", "name", "hostname", "ip", "updatedAt")
+        VALUES ('server-v011', 'Existing Server', 'proxyhub-vps', '192.0.2.10', CURRENT_TIMESTAMP);
+      INSERT INTO "Node" (
+        "id", "serverId", "name", "host", "port", "uuid", "realityPublicKey",
+        "realityPrivateKeyEncrypted", "shortId", "sni", "dest", "updatedAt"
+      ) VALUES (
+        'node-v011', 'server-v011', 'Existing Node', 'edge.example.com', 443,
+        '11111111-1111-4111-8111-111111111111', 'public-key-sentinel',
+        'encrypted-private-key-sentinel', '0123456789abcdef', 'www.microsoft.com',
+        'www.microsoft.com:443', CURRENT_TIMESTAMP
+      );
+      INSERT INTO "NodePool" ("id", "name", "updatedAt")
+        VALUES ('pool-v011', 'Existing Pool', CURRENT_TIMESTAMP);
+      INSERT INTO "NodePoolMember" ("nodeId", "nodePoolId", "priority")
+        VALUES ('node-v011', 'pool-v011', 0);
+    `);
+    database.close();
+
+    prisma(['migrate', 'resolve', '--applied', '20260722000100_init'], databasePath);
+    prisma(['migrate', 'deploy'], databasePath);
+
+    const upgraded = new DatabaseSync(databasePath);
+    upgraded.exec('PRAGMA foreign_keys = ON');
+    try {
+      expect(upgraded.prepare('SELECT username, passwordHash FROM AdminUser').get()).toMatchObject({
+        username: 'recovery-admin',
+        passwordHash: 'argon2id-sentinel',
+      });
+      expect(upgraded.prepare('SELECT tokenHash FROM Session').get()).toMatchObject({
+        tokenHash: 'session-hash-sentinel',
+      });
+      expect(
+        upgraded.prepare('SELECT name, realityPrivateKeyEncrypted FROM Node').get(),
+      ).toMatchObject({
+        name: 'Existing Node',
+        realityPrivateKeyEncrypted: 'encrypted-private-key-sentinel',
+      });
+      expect(upgraded.prepare('SELECT nodeId, nodePoolId FROM NodePoolMember').get()).toMatchObject(
+        {
+          nodeId: 'node-v011',
+          nodePoolId: 'pool-v011',
+        },
+      );
+      expect(tableNames(upgraded)).toEqual(
+        expect.arrayContaining(['Policy', 'PolicyRule', 'Subscription']),
+      );
+      expect(upgraded.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+
+      upgraded.exec(`
+        INSERT INTO "Policy" (
+          "id", "name", "defaultAction", "defaultNodePoolId", "updatedAt"
+        ) VALUES ('policy-v02', 'Protected Policy', 'NODE_POOL', 'pool-v011', CURRENT_TIMESTAMP);
+        INSERT INTO "Subscription" (
+          "id", "name", "policyId", "format", "tokenHash", "tokenPrefix", "updatedAt"
+        ) VALUES (
+          'subscription-v02', 'Protected Subscription', 'policy-v02', 'raw',
+          'subscription-hash-sentinel', 'prefix', CURRENT_TIMESTAMP
+        );
+      `);
+      expect(() => upgraded.exec("DELETE FROM Policy WHERE id = 'policy-v02'")).toThrow(
+        /foreign key constraint/i,
+      );
+      expect(() => upgraded.exec("DELETE FROM NodePool WHERE id = 'pool-v011'")).toThrow(
+        /foreign key constraint/i,
+      );
+    } finally {
+      upgraded.close();
+    }
+  }, 15_000);
+});

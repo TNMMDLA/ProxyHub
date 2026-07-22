@@ -148,7 +148,7 @@ export function AppShell({ admin }: { admin: Admin }) {
             <i />
             {systemLabel}
           </span>
-          <small>v0.2.0 · Open source</small>
+          <small>v0.2.1 · Open source</small>
         </div>
       </aside>
       {sidebarOpen ? (
@@ -199,7 +199,7 @@ export function AppShell({ admin }: { admin: Admin }) {
         <footer>
           <span>© 2026 ProxyHub · Open source under MIT License</span>
           <span>
-            <i /> API online <b>v0.2.0</b>
+            <i /> API online <b>v0.2.1</b>
           </span>
         </footer>
       </main>

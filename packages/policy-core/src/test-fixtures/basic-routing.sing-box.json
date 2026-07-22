@@ -1,0 +1,79 @@
+{
+  "log": {
+    "level": "warn"
+  },
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "Amsterdam [node-a]",
+      "server": "amsterdam.example.com",
+      "server_port": 8443,
+      "uuid": "22222222-2222-4222-8222-222222222222",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.microsoft.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "MX0nywMq8-pfglEL3R4akhssbAjoFKYpNAX9A1-Qmjc",
+          "short_id": "abcdef1234567890"
+        }
+      }
+    },
+    {
+      "type": "vless",
+      "tag": "Tokyo [node-t]",
+      "server": "tokyo.example.com",
+      "server_port": 443,
+      "uuid": "11111111-1111-4111-8111-111111111111",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.microsoft.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "MX0nywMq8-pfglEL3R4akhssbAjoFKYpNAX9A1-Qmjc",
+          "short_id": "1234567890abcdef"
+        }
+      }
+    },
+    {
+      "type": "selector",
+      "tag": "Primary Pool",
+      "outbounds": [
+        "Tokyo [node-t]",
+        "Amsterdam [node-a]"
+      ]
+    },
+    {
+      "type": "direct",
+      "tag": "DIRECT"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "domain": [
+          "example.com"
+        ],
+        "action": "route",
+        "outbound": "Primary Pool"
+      },
+      {
+        "domain_suffix": [
+          "ads.example.com"
+        ],
+        "action": "reject"
+      }
+    ],
+    "final": "DIRECT"
+  }
+}

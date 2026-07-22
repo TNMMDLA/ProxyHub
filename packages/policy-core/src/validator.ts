@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { CAPABILITIES } from './capabilities.js';
 import type {
   CompilerDiagnostic,
@@ -8,41 +9,24 @@ import type {
 
 function diagnostic(
   format: CompilerFormat,
+  severity: CompilerDiagnostic['severity'],
   code: string,
   message: string,
   rule?: CompilerRule,
 ): CompilerDiagnostic {
   return {
     code,
+    severity,
     message,
     adapter: format,
     ...(rule ? { ruleId: rule.id, ruleName: rule.name, ruleType: rule.matchType } : {}),
   };
 }
 
-function validIpv4Cidr(value: string): boolean {
+function validCidr(value: string, family: 4 | 6, maximumPrefix: number): boolean {
   const [address, prefix, extra] = value.split('/');
   if (!address || !prefix || extra !== undefined) return false;
-  const octets = address.split('.');
-  return (
-    octets.length === 4 &&
-    octets.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255) &&
-    /^\d{1,2}$/.test(prefix) &&
-    Number(prefix) <= 32
-  );
-}
-
-function validIpv6Cidr(value: string): boolean {
-  const [address, prefix, extra] = value.split('/');
-  return Boolean(
-    address &&
-    address.includes(':') &&
-    /^[0-9a-fA-F:]+$/.test(address) &&
-    prefix &&
-    /^\d{1,3}$/.test(prefix) &&
-    Number(prefix) <= 128 &&
-    extra === undefined,
-  );
+  return isIP(address) === family && /^\d{1,3}$/.test(prefix) && Number(prefix) <= maximumPrefix;
 }
 
 function validDomain(value: string): boolean {
@@ -57,6 +41,15 @@ function validDomain(value: string): boolean {
 }
 
 function ruleValueValid(rule: CompilerRule): boolean {
+  if (
+    rule.name.length === 0 ||
+    rule.name.length > 100 ||
+    rule.matchValue.length === 0 ||
+    rule.matchValue.length > 1000 ||
+    rule.matchValue !== rule.matchValue.trim()
+  ) {
+    return false;
+  }
   switch (rule.matchType) {
     case 'DOMAIN':
     case 'DOMAIN_SUFFIX':
@@ -69,14 +62,18 @@ function ruleValueValid(rule: CompilerRule): boolean {
         return false;
       }
     case 'IP_CIDR':
-      return validIpv4Cidr(rule.matchValue);
+      return validCidr(rule.matchValue, 4, 32);
     case 'IP_CIDR6':
-      return validIpv6Cidr(rule.matchValue);
+      return validCidr(rule.matchValue, 6, 128);
     case 'DST_PORT': {
       const [start, end, extra] = rule.matchValue.split('-');
       const valid = (part: string | undefined) =>
         Boolean(part && /^\d{1,5}$/.test(part) && Number(part) >= 1 && Number(part) <= 65_535);
-      return valid(start) && (end === undefined || valid(end)) && extra === undefined;
+      return (
+        valid(start) &&
+        (end === undefined || (valid(end) && Number(start) <= Number(end))) &&
+        extra === undefined
+      );
     }
     case 'NETWORK':
       return ['TCP', 'UDP'].includes(rule.matchValue.toUpperCase());
@@ -84,7 +81,7 @@ function ruleValueValid(rule: CompilerRule): boolean {
     case 'GEOSITE':
       return /^[a-zA-Z0-9_-]+$/.test(rule.matchValue);
     case 'DOMAIN_KEYWORD':
-      return rule.matchValue.length > 0;
+      return rule.matchValue.trim().length > 0;
   }
 }
 
@@ -98,14 +95,17 @@ export function validatePolicy(
 
   if (!input.policy.enabled) {
     errors.push(
-      diagnostic(format, 'POLICY_DISABLED', `Policy “${input.policy.name}” is disabled.`),
+      diagnostic(format, 'ERROR', 'POLICY_DISABLED', `Policy "${input.policy.name}" is disabled.`),
     );
   }
 
   const requiredPoolIds = new Set<string>();
   if (input.policy.defaultAction === 'NODE_POOL') {
     if (input.policy.defaultNodePoolId) requiredPoolIds.add(input.policy.defaultNodePoolId);
-    else errors.push(diagnostic(format, 'POLICY_INVALID', 'Default NODE_POOL action has no pool.'));
+    else
+      errors.push(
+        diagnostic(format, 'ERROR', 'POLICY_INVALID', 'Default NODE_POOL action has no pool.'),
+      );
   }
 
   const duplicateKeys = new Map<string, CompilerRule>();
@@ -114,8 +114,9 @@ export function validatePolicy(
       errors.push(
         diagnostic(
           format,
+          'ERROR',
           'POLICY_RULE_INVALID',
-          `Rule “${rule.name}” has an invalid value.`,
+          `Rule "${rule.name}" has an invalid name or value.`,
           rule,
         ),
       );
@@ -124,6 +125,7 @@ export function validatePolicy(
       warnings.push(
         diagnostic(
           format,
+          'WARNING',
           'POLICY_RULE_UNSUPPORTED',
           `${format} cannot represent ${rule.matchType}; the rule is not emitted.`,
           rule,
@@ -134,7 +136,13 @@ export function validatePolicy(
       if (rule.nodePoolId) requiredPoolIds.add(rule.nodePoolId);
       else {
         errors.push(
-          diagnostic(format, 'POLICY_RULE_INVALID', `Rule “${rule.name}” has no node pool.`, rule),
+          diagnostic(
+            format,
+            'ERROR',
+            'POLICY_RULE_INVALID',
+            `Rule "${rule.name}" has no node pool.`,
+            rule,
+          ),
         );
       }
     }
@@ -146,8 +154,9 @@ export function validatePolicy(
       warnings.push(
         diagnostic(
           format,
+          'WARNING',
           'POLICY_RULE_DUPLICATE',
-          `Rule duplicates “${duplicate.name}”; First Match Wins keeps the earlier rule.`,
+          `Rule duplicates "${duplicate.name}". First Match Wins keeps the earlier rule.`,
           rule,
         ),
       );
@@ -160,6 +169,7 @@ export function validatePolicy(
       errors.push(
         diagnostic(
           format,
+          'ERROR',
           'POLICY_NODE_POOL_MISSING',
           `Referenced node pool ${poolId} is missing.`,
         ),
@@ -168,12 +178,22 @@ export function validatePolicy(
     }
     if (!pool.enabled) {
       warnings.push(
-        diagnostic(format, 'NODE_POOL_DISABLED', `Node pool “${pool.name}” is disabled.`),
+        diagnostic(
+          format,
+          'WARNING',
+          'NODE_POOL_DISABLED',
+          `Node pool "${pool.name}" is disabled.`,
+        ),
       );
     }
     if (pool.members.length === 0) {
       errors.push(
-        diagnostic(format, 'NODE_POOL_EMPTY', `Node pool “${pool.name}” has no enabled nodes.`),
+        diagnostic(
+          format,
+          'ERROR',
+          'NODE_POOL_EMPTY',
+          `Node pool "${pool.name}" has no enabled nodes.`,
+        ),
       );
     }
   }

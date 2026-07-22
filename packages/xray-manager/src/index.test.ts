@@ -51,6 +51,40 @@ describe('xray-manager', () => {
     expect(uri).not.toContain('private');
   });
 
+  it('percent-encodes special characters in VLESS query values and fragments', () => {
+    const uri = createVlessUri({
+      uuid: '11111111-1111-4111-8111-111111111111',
+      host: 'host.example',
+      port: 443,
+      flow: 'xtls-rprx-vision',
+      sni: 'server name.example',
+      fingerprint: 'chrome#beta',
+      realityPublicKey: 'public+key/value=',
+      shortId: 'deadbeef',
+      name: 'Edge: # " \'\nUnicode 😀',
+    });
+    expect(uri.match(/#/g)).toHaveLength(1);
+    expect(uri).toContain('sni=server+name.example');
+    expect(uri).toContain('fp=chrome%23beta');
+    expect(uri).toContain('pbk=public%2Bkey%2Fvalue%3D');
+    expect(uri).toContain('#Edge%3A%20%23%20%22%20%27%0AUnicode%20%F0%9F%98%80');
+  });
+
+  it('brackets IPv6 hosts in VLESS authority components', () => {
+    const uri = createVlessUri({
+      uuid: '11111111-1111-4111-8111-111111111111',
+      host: '2001:db8::1',
+      port: 443,
+      flow: 'xtls-rprx-vision',
+      sni: 'www.microsoft.com',
+      fingerprint: 'chrome',
+      realityPublicKey: 'public',
+      shortId: 'deadbeef',
+      name: 'IPv6 Edge',
+    });
+    expect(uri).toContain('@[2001:db8::1]:443');
+  });
+
   it('removes the temporary config when Xray validation fails', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'proxyhub-xray-'));
     const targetPath = join(directory, 'config.json');

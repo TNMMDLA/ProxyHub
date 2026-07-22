@@ -67,6 +67,7 @@ export interface PolicyCompileInput {
 
 export interface CompilerDiagnostic {
   code: string;
+  severity: 'WARNING' | 'ERROR';
   message: string;
   adapter: CompilerFormat;
   ruleId?: string;
@@ -86,6 +87,7 @@ export interface CompilerResult {
     ruleCount: number;
     nodeCount: number;
     poolCount: number;
+    adapter: AdapterMetadata;
   };
 }
 
@@ -101,4 +103,14 @@ export interface AdapterCapability {
   format: CompilerFormat;
   ruleTypes: ReadonlySet<PolicyMatchType>;
   routing: boolean;
+}
+
+export interface AdapterMetadata {
+  adapterName: CompilerFormat;
+  adapterVersion: string;
+  validatedAgainst: string;
+  capabilities: {
+    routing: boolean;
+    ruleTypes: PolicyMatchType[];
+  };
 }
