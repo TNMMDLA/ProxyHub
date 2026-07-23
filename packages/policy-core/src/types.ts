@@ -11,6 +11,7 @@ export type PolicyMatchType =
   | 'DST_PORT'
   | 'NETWORK';
 export type CompilerFormat = 'mihomo' | 'sing-box' | 'raw';
+export type PolicyMatchSourceType = 'INLINE' | 'RULE_SET';
 
 export interface CompilerPolicy {
   id: string;
@@ -32,6 +33,27 @@ export interface CompilerRule {
   matchValue: string;
   actionType: PolicyActionType;
   nodePoolId: string | null;
+  matchSourceType?: PolicyMatchSourceType;
+  ruleSetId?: string | null;
+  ruleSetName?: string | null;
+  ruleSetSourceType?: 'MANUAL' | 'REMOTE';
+  entryIndex?: number;
+  originRuleId?: string;
+}
+
+export interface CompilerRuleSetEntry {
+  type: PolicyMatchType;
+  value: string;
+  order: number;
+}
+
+export interface CompilerRuleSet {
+  id: string;
+  name: string;
+  enabled: boolean;
+  sourceType: 'MANUAL' | 'REMOTE';
+  status: 'READY' | 'UPDATING' | 'STALE' | 'ERROR' | 'DISABLED' | 'EMPTY';
+  entries: CompilerRuleSetEntry[];
 }
 
 export interface CompilerNode {
@@ -63,6 +85,7 @@ export interface PolicyCompileInput {
   rules: CompilerRule[];
   nodes: CompilerNode[];
   nodePools: CompilerNodePool[];
+  ruleSets?: CompilerRuleSet[];
 }
 
 export interface CompilerDiagnostic {
@@ -73,6 +96,10 @@ export interface CompilerDiagnostic {
   ruleId?: string;
   ruleName?: string;
   ruleType?: PolicyMatchType;
+  ruleSetId?: string;
+  ruleSetName?: string;
+  sourceType?: 'MANUAL' | 'REMOTE';
+  entryIndex?: number;
 }
 
 export interface CompilerResult {
@@ -87,6 +114,9 @@ export interface CompilerResult {
     ruleCount: number;
     nodeCount: number;
     poolCount: number;
+    sourceRuleCount: number;
+    expandedRuleCount: number;
+    ruleSetCount: number;
     adapter: AdapterMetadata;
   };
 }
@@ -97,6 +127,19 @@ export interface NormalizedPolicyInput extends PolicyCompileInput {
   nodePools: CompilerNodePool[];
   nodeById: Map<string, CompilerNode>;
   poolById: Map<string, CompilerNodePool>;
+  ruleSetIssues: RuleSetResolutionIssue[];
+  referencedRuleSetCount: number;
+}
+
+export interface RuleSetResolutionIssue {
+  code: string;
+  severity: 'WARNING' | 'ERROR';
+  message: string;
+  ruleId: string;
+  ruleName: string;
+  ruleSetId?: string;
+  ruleSetName?: string;
+  sourceType?: 'MANUAL' | 'REMOTE';
 }
 
 export interface AdapterCapability {

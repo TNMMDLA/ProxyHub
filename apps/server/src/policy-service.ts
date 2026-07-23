@@ -2,6 +2,7 @@ import { compilePolicy } from '@proxyhub/policy-core';
 import type {
   CompilerFormat,
   CompilerNode,
+  CompilerRuleSet,
   PolicyActionType,
   PolicyCompileInput,
   PolicyMatchType,
@@ -12,7 +13,16 @@ import { AppError } from './errors.js';
 
 export async function loadPolicyCompileInput(policyId: string): Promise<PolicyCompileInput> {
   const [policy, nodes, nodePools] = await Promise.all([
-    prisma.policy.findUnique({ where: { id: policyId }, include: { rules: true } }),
+    prisma.policy.findUnique({
+      where: { id: policyId },
+      include: {
+        rules: {
+          include: {
+            ruleSet: { include: { cache: true } },
+          },
+        },
+      },
+    }),
     prisma.node.findMany(),
     prisma.nodePool.findMany({ include: { members: true } }),
   ]);
@@ -32,6 +42,28 @@ export async function loadPolicyCompileInput(policyId: string): Promise<PolicyCo
     status: node.status,
     uri: createVlessUri(node),
   }));
+  const compilerRuleSets = new Map<string, CompilerRuleSet>();
+  for (const rule of policy.rules) {
+    if (!rule.ruleSet || compilerRuleSets.has(rule.ruleSet.id)) continue;
+    let entries: Array<{ type: PolicyMatchType; value: string; order: number }> = [];
+    try {
+      const normalized = JSON.parse(rule.ruleSet.cache?.normalizedContent ?? '[]') as Array<{
+        type: PolicyMatchType;
+        value: string;
+      }>;
+      entries = normalized.map((entry, order) => ({ ...entry, order }));
+    } catch {
+      entries = [];
+    }
+    compilerRuleSets.set(rule.ruleSet.id, {
+      id: rule.ruleSet.id,
+      name: rule.ruleSet.name,
+      enabled: rule.ruleSet.enabled,
+      sourceType: rule.ruleSet.sourceType as CompilerRuleSet['sourceType'],
+      status: rule.ruleSet.status as CompilerRuleSet['status'],
+      entries,
+    });
+  }
   return {
     policy: {
       id: policy.id,
@@ -52,6 +84,9 @@ export async function loadPolicyCompileInput(policyId: string): Promise<PolicyCo
       matchValue: rule.matchValue,
       actionType: rule.actionType as PolicyActionType,
       nodePoolId: rule.nodePoolId,
+      matchSourceType: rule.matchSourceType as 'INLINE' | 'RULE_SET',
+      ruleSetId: rule.ruleSetId,
+      ruleSetName: rule.ruleSet?.name ?? null,
     })),
     nodes: compilerNodes,
     nodePools: nodePools.map((pool) => ({
@@ -64,6 +99,7 @@ export async function loadPolicyCompileInput(policyId: string): Promise<PolicyCo
         priority: member.priority,
       })),
     })),
+    ruleSets: [...compilerRuleSets.values()],
   };
 }
 

@@ -427,6 +427,186 @@ describe('ProxyHub foundation API', () => {
     expect(deletedRule.statusCode).toBe(200);
   });
 
+  it('manages reusable rule sets and resolves them inside policies', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/rule-sets',
+      headers: { cookie },
+      payload: {
+        name: 'OpenAI Integration Rules',
+        description: 'Reusable client routing rules',
+        sourceType: 'MANUAL',
+        format: 'PLAIN_TEXT',
+        enabled: true,
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const ruleSetId = created.json().data.id as string;
+
+    const imported = await app.inject({
+      method: 'POST',
+      url: `/api/rule-sets/${ruleSetId}/import`,
+      headers: { cookie },
+      payload: {
+        format: 'PLAIN_TEXT',
+        mode: 'REPLACE',
+        content:
+          '# OpenAI\nDOMAIN_SUFFIX,openai.com\nDOMAIN_SUFFIX,chatgpt.com\nDOMAIN_SUFFIX,openai.com\n',
+      },
+    });
+    expect(imported.statusCode, imported.body).toBe(200);
+    expect(imported.json().data.ruleCount).toBe(2);
+    expect(imported.json().data.preview.duplicateCount).toBe(1);
+
+    const invalidEntry = await app.inject({
+      method: 'POST',
+      url: `/api/rule-sets/${ruleSetId}/entries`,
+      headers: { cookie },
+      payload: { type: 'DOMAIN', value: 'not a domain', enabled: true },
+    });
+    expect(invalidEntry.statusCode).toBe(422);
+    expect(await prisma.ruleSetEntry.count({ where: { ruleSetId } })).toBe(2);
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/rule-sets/${ruleSetId}`,
+      headers: { cookie },
+    });
+    expect(detail.json().data.cache).toBeUndefined();
+
+    const preview = await app.inject({
+      method: 'GET',
+      url: `/api/rule-sets/${ruleSetId}/preview?limit=1`,
+      headers: { cookie },
+    });
+    expect(preview.statusCode, preview.body).toBe(200);
+    expect(preview.json().data.totalRules).toBe(2);
+    expect(preview.json().data.rules).toHaveLength(1);
+
+    const policyRule = await app.inject({
+      method: 'POST',
+      url: `/api/policies/${policyId}/rules`,
+      headers: { cookie },
+      payload: {
+        name: 'OpenAI via Rule Set',
+        description: '',
+        enabled: true,
+        matchSourceType: 'RULE_SET',
+        ruleSetId,
+        actionType: 'DIRECT',
+        nodePoolId: null,
+      },
+    });
+    expect(policyRule.statusCode, policyRule.body).toBe(201);
+    const policyRuleId = policyRule.json().data.id as string;
+
+    const compiled = await app.inject({
+      method: 'POST',
+      url: `/api/policies/${policyId}/compile-preview`,
+      headers: { cookie },
+      payload: { format: 'mihomo' },
+    });
+    expect(compiled.statusCode, compiled.body).toBe(200);
+    expect(compiled.json().data.output).toContain('DOMAIN-SUFFIX,openai.com,DIRECT');
+    expect(compiled.json().data.metadata.ruleSetCount).toBe(1);
+
+    const blockedDelete = await app.inject({
+      method: 'DELETE',
+      url: `/api/rule-sets/${ruleSetId}`,
+      headers: { cookie },
+    });
+    expect(blockedDelete.statusCode).toBe(409);
+    expect(blockedDelete.json().error.code).toBe('RULE_SET_IN_USE');
+    expect(blockedDelete.json().error.details.policies[0].id).toBe(policyId);
+
+    const disabled = await app.inject({
+      method: 'POST',
+      url: `/api/rule-sets/${ruleSetId}/disable`,
+      headers: { cookie },
+    });
+    expect(disabled.statusCode, disabled.body).toBe(200);
+    const disabledCompile = await app.inject({
+      method: 'POST',
+      url: `/api/policies/${policyId}/compile-preview`,
+      headers: { cookie },
+      payload: { format: 'mihomo' },
+    });
+    expect(disabledCompile.json().data.errors).toContainEqual(
+      expect.objectContaining({ code: 'RULE_SET_DISABLED', ruleSetId }),
+    );
+    await expect(
+      prisma.notification.findFirstOrThrow({
+        where: { eventType: 'RULE_SET_REFERENCED_DISABLED' },
+      }),
+    ).resolves.toBeTruthy();
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/rule-sets/${ruleSetId}/enable`,
+      headers: { cookie },
+    });
+    const exported = await app.inject({
+      method: 'GET',
+      url: `/api/rule-sets/${ruleSetId}/export`,
+      headers: { cookie },
+    });
+    expect(exported.json().data).toMatchObject({
+      version: 1,
+      format: 'PROXYHUB_NATIVE',
+      contentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+
+    const remote = await app.inject({
+      method: 'POST',
+      url: '/api/rule-sets',
+      headers: { cookie },
+      payload: {
+        name: 'Remote Integration Rules',
+        sourceType: 'REMOTE',
+        format: 'MIHOMO',
+        sourceUrl: 'https://rules.example.com/list?token=must-not-audit',
+        updateIntervalMinutes: 60,
+        enabled: true,
+      },
+    });
+    expect(remote.statusCode, remote.body).toBe(201);
+    expect(remote.json().data.sourceUrl).toBe('https://rules.example.com/list');
+    const remoteId = remote.json().data.id as string;
+    const renamedRemote = await app.inject({
+      method: 'PATCH',
+      url: `/api/rule-sets/${remoteId}`,
+      headers: { cookie },
+      payload: { name: 'Remote Integration Rules Renamed' },
+    });
+    expect(renamedRemote.statusCode, renamedRemote.body).toBe(200);
+    await expect(
+      prisma.ruleSet.findUniqueOrThrow({ where: { id: remoteId } }),
+    ).resolves.toMatchObject({
+      sourceUrl: 'https://rules.example.com/list?token=must-not-audit',
+    });
+    await app.inject({ method: 'DELETE', url: `/api/rule-sets/${remoteId}`, headers: { cookie } });
+
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/policies/${policyId}/rules/${policyRuleId}`,
+      headers: { cookie },
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `/api/rule-sets/${ruleSetId}`,
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const auditMetadata = (await prisma.auditLog.findMany({ where: { resource: 'RuleSet' } }))
+      .map((entry) => entry.metadata)
+      .join('\n');
+    expect(auditMetadata).not.toContain('must-not-audit');
+  });
+
   it('secures subscription tokens, rotation, expiration and public compilation', async () => {
     const created = await app.inject({
       method: 'POST',

@@ -1,0 +1,22 @@
+[
+  {
+    "type": "DOMAIN",
+    "value": "example.com"
+  },
+  {
+    "type": "IP_CIDR",
+    "value": "192.0.2.0/24"
+  },
+  {
+    "type": "IP_CIDR6",
+    "value": "2001:db8::/32"
+  },
+  {
+    "type": "DST_PORT",
+    "value": "443-8443"
+  },
+  {
+    "type": "NETWORK",
+    "value": "UDP"
+  }
+]

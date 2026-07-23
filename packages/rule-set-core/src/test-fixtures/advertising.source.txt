@@ -1,0 +1,4 @@
+payload:
+  - DOMAIN-SUFFIX,ads.example
+  - DOMAIN-KEYWORD,tracker
+  - PROCESS-NAME,unsupported.exe

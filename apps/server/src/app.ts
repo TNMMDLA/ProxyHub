@@ -11,6 +11,7 @@ import { poolRoutes } from './routes/pools.js';
 import { operationRoutes } from './routes/operations.js';
 import { policyRoutes } from './routes/policies.js';
 import { publicSubscriptionRoutes, subscriptionRoutes } from './routes/subscriptions.js';
+import { ruleSetRoutes } from './routes/rule-sets.js';
 import { config } from './config.js';
 import { AppError } from './errors.js';
 import { defaultAgentClient, type AgentClient } from './agent-client.js';
@@ -85,11 +86,12 @@ export async function buildApp(options: { agentClient?: AgentClient; logFile?: s
     });
   });
 
-  app.get('/api/health', async () => ({ success: true, data: { status: 'ok', version: '0.2.1' } }));
+  app.get('/api/health', async () => ({ success: true, data: { status: 'ok', version: '0.3.0' } }));
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(nodeRoutes, { prefix: '/api/nodes', agentClient });
   await app.register(poolRoutes, { prefix: '/api/node-pools' });
   await app.register(policyRoutes, { prefix: '/api/policies' });
+  await app.register(ruleSetRoutes, { prefix: '/api/rule-sets' });
   await app.register(subscriptionRoutes, { prefix: '/api/subscriptions' });
   await app.register(publicSubscriptionRoutes, { prefix: '/sub' });
   await app.register(operationRoutes, { prefix: '/api', agentClient });

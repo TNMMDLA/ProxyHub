@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "OpenAI",
+  "rules": [
+    { "type": "DOMAIN_SUFFIX", "value": "OpenAI.COM" },
+    { "type": "DOMAIN_SUFFIX", "value": "chatgpt.com" },
+    { "type": "DOMAIN_SUFFIX", "value": "openai.com" }
+  ]
+}

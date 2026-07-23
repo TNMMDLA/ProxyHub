@@ -30,6 +30,8 @@
 
 All formats support deterministic node filtering and ordering. Mihomo and sing-box implement ordered routing plus `DIRECT`, `REJECT`, and `NODE_POOL` actions. Raw VLESS intentionally emits only enabled node URIs; routing rules and default actions are not representable and produce capability warnings rather than silently claiming support.
 
+V0.3 Rule Sets are expanded into the same unified rule stream before adapter compilation. CI-generated compatibility files include a cached Rule Set reference and continue through Mihomo `v1.19.28` and sing-box `1.13.12` real-core validation. This validates core syntax only; the GUI client rows remain not verified.
+
 ## Known boundaries
 
 - sing-box deliberately omits `GEOIP` and `GEOSITE` instead of emitting deprecated or misleading route syntax.

@@ -2,8 +2,10 @@ import { hostname } from 'node:os';
 import { buildApp } from './app.js';
 import { config } from './config.js';
 import { prisma } from './db.js';
+import { startRuleSetScheduler } from './rule-set/scheduler.js';
 
 const app = await buildApp();
+const stopRuleSetScheduler = startRuleSetScheduler();
 
 await prisma.server.upsert({
   where: { id: 'local-controller' },
@@ -14,12 +16,13 @@ await prisma.server.upsert({
     hostname: hostname(),
     ip: '127.0.0.1',
     status: 'ONLINE',
-    agentVersion: '0.2.1',
+    agentVersion: '0.3.0',
     lastHeartbeat: new Date(),
   },
 });
 
 const close = async () => {
+  stopRuleSetScheduler();
   await app.close();
   await prisma.$disconnect();
   process.exit(0);

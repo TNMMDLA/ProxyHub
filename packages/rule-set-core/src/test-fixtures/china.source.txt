@@ -1,0 +1,4 @@
+# China routes
+GEOIP,CN
+DOMAIN_SUFFIX,cn
+IP_CIDR,10.10.10.10/8

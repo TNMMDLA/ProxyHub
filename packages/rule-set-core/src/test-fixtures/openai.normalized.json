@@ -1,0 +1,10 @@
+[
+  {
+    "type": "DOMAIN_SUFFIX",
+    "value": "openai.com"
+  },
+  {
+    "type": "DOMAIN_SUFFIX",
+    "value": "chatgpt.com"
+  }
+]

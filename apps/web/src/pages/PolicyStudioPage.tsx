@@ -20,10 +20,12 @@ import { Button, EmptyState, Modal, PageHeader, QueryErrorState, Status } from '
 import type {
   CompilerPreviewRecord,
   PolicyAction,
+  PolicyMatchSource,
   PolicyMatchType,
   PolicyRecord,
   PolicyRuleRecord,
   PoolRecord,
+  RuleSetRecord,
   SubscriptionFormat,
 } from '../types';
 
@@ -54,8 +56,10 @@ interface RuleForm {
   name: string;
   description: string;
   enabled: boolean;
+  matchSourceType: PolicyMatchSource;
   matchType: PolicyMatchType;
   matchValue: string;
+  ruleSetId: string;
   actionType: PolicyAction;
   nodePoolId: string;
 }
@@ -71,8 +75,10 @@ const emptyRule: RuleForm = {
   name: '',
   description: '',
   enabled: true,
+  matchSourceType: 'INLINE',
   matchType: 'DOMAIN',
   matchValue: '',
+  ruleSetId: '',
   actionType: 'DIRECT',
   nodePoolId: '',
 };
@@ -110,6 +116,10 @@ export default function PolicyStudioPage() {
   const pools = useQuery({
     queryKey: ['node-pools'],
     queryFn: () => api<PoolRecord[]>('/node-pools'),
+  });
+  const ruleSets = useQuery({
+    queryKey: ['rule-sets'],
+    queryFn: () => api<RuleSetRecord[]>('/rule-sets'),
   });
   const activeId = selectedId ?? policies.data?.[0]?.id ?? null;
   const policy = useQuery({
@@ -196,7 +206,11 @@ export default function PolicyStudioPage() {
           : `/policies/${activeId}/rules`,
         {
           method: editingRuleId ? 'PATCH' : 'POST',
-          body: JSON.stringify({ ...input, nodePoolId: input.nodePoolId || null }),
+          body: JSON.stringify({
+            ...input,
+            nodePoolId: input.nodePoolId || null,
+            ruleSetId: input.matchSourceType === 'RULE_SET' ? input.ruleSetId : null,
+          }),
         },
       ),
     onSuccess: async () => {
@@ -262,7 +276,9 @@ export default function PolicyStudioPage() {
     return rules.filter(
       (rule) =>
         (!needle ||
-          `${rule.name} ${rule.matchType} ${rule.matchValue}`.toLowerCase().includes(needle)) &&
+          `${rule.name} ${rule.matchType} ${rule.matchValue} ${rule.ruleSet?.name ?? ''}`
+            .toLowerCase()
+            .includes(needle)) &&
         (enabledFilter === 'all' || String(rule.enabled) === enabledFilter) &&
         (actionFilter === 'all' || rule.actionType === actionFilter),
     );
@@ -276,8 +292,10 @@ export default function PolicyStudioPage() {
             name: rule.name,
             description: rule.description,
             enabled: rule.enabled,
+            matchSourceType: rule.matchSourceType,
             matchType: rule.matchType,
             matchValue: rule.matchValue,
+            ruleSetId: rule.ruleSetId ?? '',
             actionType: rule.actionType,
             nodePoolId: rule.nodePoolId ?? '',
           }
@@ -316,17 +334,20 @@ export default function PolicyStudioPage() {
     reorderRules.mutate(ids);
   };
   const selectedRulePool = pools.data?.find((item) => item.id === ruleForm.nodePoolId);
+  const selectedRuleSet = ruleSets.data?.find((item) => item.id === ruleForm.ruleSetId);
   const ruleValidation =
     ruleForm.name.trim().length < 2
       ? 'Rule name must contain at least two characters.'
-      : !ruleForm.matchValue.trim()
-        ? 'Match value is required.'
-        : ruleForm.actionType === 'NODE_POOL'
-          ? poolWarning(selectedRulePool)
-          : null;
+      : ruleForm.matchSourceType === 'RULE_SET' && !selectedRuleSet
+        ? 'Select an existing rule set.'
+        : ruleForm.matchSourceType === 'INLINE' && !ruleForm.matchValue.trim()
+          ? 'Match value is required.'
+          : ruleForm.actionType === 'NODE_POOL'
+            ? poolWarning(selectedRulePool)
+            : null;
 
-  if (policies.isError || pools.isError) {
-    const failed = policies.isError ? policies : pools;
+  if (policies.isError || pools.isError || ruleSets.isError) {
+    const failed = policies.isError ? policies : pools.isError ? pools : ruleSets;
     return <QueryErrorState error={failed.error} onRetry={() => void failed.refetch()} />;
   }
 
@@ -555,8 +576,14 @@ export default function PolicyStudioPage() {
                             <Status value={rule.enabled ? 'ENABLED' : 'DISABLED'} />
                           </header>
                           <div className="rule-expression">
-                            <code>{rule.matchType}</code>
-                            <span>{rule.matchValue}</span>
+                            <code>
+                              {rule.matchSourceType === 'RULE_SET' ? 'RULE SET' : rule.matchType}
+                            </code>
+                            <span>
+                              {rule.matchSourceType === 'RULE_SET'
+                                ? `${rule.ruleSet?.name ?? 'Missing rule set'} · ${String(rule.ruleSet?.ruleCount ?? 0)} rules · ${rule.ruleSet?.status ?? 'UNAVAILABLE'}`
+                                : rule.matchValue}
+                            </span>
                             <i>→</i>
                             <code>
                               {rule.actionType === 'NODE_POOL'
@@ -647,8 +674,10 @@ export default function PolicyStudioPage() {
                     <div className="compile-summary">
                       <Status value={preview.success ? 'SUCCESS' : 'FAILURE'} />
                       <span>
-                        {preview.metadata.ruleCount} rules · {preview.metadata.nodeCount} nodes ·
-                        revision {preview.metadata.revision}
+                        {preview.metadata.expandedRuleCount} compiled rules from{' '}
+                        {preview.metadata.sourceRuleCount} policy rules and{' '}
+                        {preview.metadata.ruleSetCount} rule sets · {preview.metadata.nodeCount}{' '}
+                        nodes · revision {preview.metadata.revision}
                       </span>
                       <button
                         onClick={() =>
@@ -675,6 +704,7 @@ export default function PolicyStudioPage() {
                             <small>
                               {item.adapter}
                               {item.ruleType ? ` · ${item.ruleType}` : ''}
+                              {item.ruleSetName ? ` · ${item.ruleSetName}` : ''}
                             </small>
                           </div>
                         ))}
@@ -818,27 +848,72 @@ export default function PolicyStudioPage() {
                 />
               </label>
               <label className="field">
-                <span>Match type</span>
+                <span>Match source</span>
                 <select
-                  value={ruleForm.matchType}
+                  value={ruleForm.matchSourceType}
                   onChange={(event) =>
-                    setRuleForm({ ...ruleForm, matchType: event.target.value as PolicyMatchType })
+                    setRuleForm({
+                      ...ruleForm,
+                      matchSourceType: event.target.value as PolicyMatchSource,
+                      ruleSetId: event.target.value === 'RULE_SET' ? ruleForm.ruleSetId : '',
+                    })
                   }
                 >
-                  {MATCH_TYPES.map((type) => (
-                    <option key={type}>{type}</option>
-                  ))}
+                  <option value="INLINE">Inline</option>
+                  <option value="RULE_SET">Rule Set</option>
                 </select>
               </label>
             </div>
-            <label className="field">
-              <span>Match value</span>
-              <input
-                value={ruleForm.matchValue}
-                onChange={(event) => setRuleForm({ ...ruleForm, matchValue: event.target.value })}
-                placeholder={ruleForm.matchType === 'IP_CIDR' ? '10.0.0.0/8' : 'example.com'}
-              />
-            </label>
+            {ruleForm.matchSourceType === 'INLINE' ? (
+              <div className="form-grid">
+                <label className="field">
+                  <span>Match type</span>
+                  <select
+                    value={ruleForm.matchType}
+                    onChange={(event) =>
+                      setRuleForm({ ...ruleForm, matchType: event.target.value as PolicyMatchType })
+                    }
+                  >
+                    {MATCH_TYPES.map((type) => (
+                      <option key={type}>{type}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Match value</span>
+                  <input
+                    value={ruleForm.matchValue}
+                    onChange={(event) =>
+                      setRuleForm({ ...ruleForm, matchValue: event.target.value })
+                    }
+                    placeholder={ruleForm.matchType === 'IP_CIDR' ? '10.0.0.0/8' : 'example.com'}
+                  />
+                </label>
+              </div>
+            ) : (
+              <label className="field">
+                <span>Rule Set</span>
+                <select
+                  value={ruleForm.ruleSetId}
+                  onChange={(event) => setRuleForm({ ...ruleForm, ruleSetId: event.target.value })}
+                >
+                  <option value="">Select rule set</option>
+                  {ruleSets.data?.map((ruleSet) => (
+                    <option key={ruleSet.id} value={ruleSet.id}>
+                      {ruleSet.name} · {ruleSet.ruleCount} rules · {ruleSet.status}
+                    </option>
+                  ))}
+                </select>
+                {selectedRuleSet &&
+                ['STALE', 'EMPTY', 'ERROR', 'DISABLED'].includes(selectedRuleSet.status) ? (
+                  <small className="validation-warning">
+                    {selectedRuleSet.status === 'STALE'
+                      ? 'Compilation will use the last known good cache.'
+                      : `This rule set is ${selectedRuleSet.status.toLowerCase()}.`}
+                  </small>
+                ) : null}
+              </label>
+            )}
             <div className="form-grid">
               <label className="field">
                 <span>Action</span>

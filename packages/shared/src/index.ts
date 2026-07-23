@@ -48,6 +48,17 @@ export const policyMatchTypeSchema = z.enum([
   'NETWORK',
 ]);
 export const subscriptionFormatSchema = z.enum(['mihomo', 'sing-box', 'raw']);
+export const policyMatchSourceSchema = z.enum(['INLINE', 'RULE_SET']);
+export const ruleSetSourceTypeSchema = z.enum(['MANUAL', 'REMOTE']);
+export const ruleSetFormatSchema = z.enum(['AUTO', 'PROXYHUB_NATIVE', 'PLAIN_TEXT', 'MIHOMO']);
+export const ruleSetStatusSchema = z.enum([
+  'READY',
+  'UPDATING',
+  'STALE',
+  'ERROR',
+  'DISABLED',
+  'EMPTY',
+]);
 
 const policyBaseSchema = z.object({
   name: z.string().trim().min(2).max(100),
@@ -67,21 +78,38 @@ export const createPolicySchema = policyBaseSchema
   });
 export const updatePolicySchema = policyBaseSchema.partial();
 
-export const policyRuleInputSchema = z.object({
-  name: z.string().trim().min(2).max(100),
-  description: z.string().trim().max(500).default(''),
-  enabled: z.boolean().default(true),
-  matchType: policyMatchTypeSchema,
-  matchValue: z.string().trim().min(1).max(1000),
-  actionType: policyActionSchema,
-  nodePoolId: z.string().trim().min(1).max(80).nullable().default(null),
-});
+export const policyRuleInputSchema = z
+  .object({
+    name: z.string().trim().min(2).max(100),
+    description: z.string().trim().max(500).default(''),
+    enabled: z.boolean().default(true),
+    matchSourceType: policyMatchSourceSchema.default('INLINE'),
+    matchType: policyMatchTypeSchema.default('DOMAIN'),
+    matchValue: z.string().trim().max(1000).default(''),
+    ruleSetId: z.string().trim().min(1).max(80).nullable().default(null),
+    actionType: policyActionSchema,
+    nodePoolId: z.string().trim().min(1).max(80).nullable().default(null),
+  })
+  .superRefine((rule, context) => {
+    if (rule.matchSourceType === 'INLINE' && !rule.matchValue) {
+      context.addIssue({
+        code: 'custom',
+        path: ['matchValue'],
+        message: 'Match value is required',
+      });
+    }
+    if (rule.matchSourceType === 'RULE_SET' && !rule.ruleSetId) {
+      context.addIssue({ code: 'custom', path: ['ruleSetId'], message: 'Rule set is required' });
+    }
+  });
 export const updatePolicyRuleSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
   description: z.string().trim().max(500).optional(),
   enabled: z.boolean().optional(),
+  matchSourceType: policyMatchSourceSchema.optional(),
   matchType: policyMatchTypeSchema.optional(),
-  matchValue: z.string().trim().min(1).max(1000).optional(),
+  matchValue: z.string().trim().max(1000).optional(),
+  ruleSetId: z.string().trim().min(1).max(80).nullable().optional(),
   actionType: policyActionSchema.optional(),
   nodePoolId: z.string().trim().min(1).max(80).nullable().optional(),
 });
@@ -89,6 +117,60 @@ export const reorderPolicyRulesSchema = z.object({
   ruleIds: z.array(z.string().trim().min(1).max(80)).max(1000),
 });
 export const compilePolicySchema = z.object({ format: subscriptionFormatSchema });
+
+export const createRuleSetSchema = z
+  .object({
+    name: z.string().trim().min(2).max(100),
+    description: z.string().trim().max(500).default(''),
+    enabled: z.boolean().default(true),
+    sourceType: ruleSetSourceTypeSchema,
+    format: ruleSetFormatSchema.default('AUTO'),
+    sourceUrl: z.string().trim().url().max(2048).nullable().default(null),
+    updateIntervalMinutes: z.number().int().min(5).max(43_200).nullable().default(null),
+  })
+  .superRefine((value, context) => {
+    if (value.sourceType === 'REMOTE' && !value.sourceUrl) {
+      context.addIssue({ code: 'custom', path: ['sourceUrl'], message: 'Remote URL is required' });
+    }
+    if (value.sourceType === 'MANUAL' && value.sourceUrl) {
+      context.addIssue({
+        code: 'custom',
+        path: ['sourceUrl'],
+        message: 'Manual rule sets cannot have a URL',
+      });
+    }
+  });
+export const updateRuleSetSchema = z.object({
+  name: z.string().trim().min(2).max(100).optional(),
+  description: z.string().trim().max(500).optional(),
+  enabled: z.boolean().optional(),
+  format: ruleSetFormatSchema.optional(),
+  sourceUrl: z.string().trim().url().max(2048).nullable().optional(),
+  updateIntervalMinutes: z.number().int().min(5).max(43_200).nullable().optional(),
+});
+export const ruleSetEntrySchema = z.object({
+  type: policyMatchTypeSchema,
+  value: z.string().trim().min(1).max(1000),
+  enabled: z.boolean().default(true),
+});
+export const updateRuleSetEntrySchema = ruleSetEntrySchema.partial();
+export const bulkRuleSetEntriesSchema = z.object({
+  entries: z.array(ruleSetEntrySchema).min(1).max(50_000),
+});
+export const bulkDeleteRuleSetEntriesSchema = z.object({
+  entryIds: z.array(z.string().trim().min(1).max(80)).min(1).max(50_000),
+});
+export const parseRuleSetPreviewSchema = z.object({
+  content: z
+    .string()
+    .min(1)
+    .max(5 * 1024 * 1024),
+  format: ruleSetFormatSchema.optional(),
+});
+export const testRuleSetSourceSchema = z.object({
+  url: z.string().trim().url().max(2048),
+  format: ruleSetFormatSchema.default('AUTO'),
+});
 
 const subscriptionBaseSchema = z.object({
   name: z.string().trim().min(2).max(100),

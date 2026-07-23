@@ -52,4 +52,12 @@ describe('subscription secret security', () => {
     );
     expect(redactRequestUrl(`/sub/${token}`)).not.toContain(token);
   });
+
+  it('redacts remote URL query tokens, signatures and basic-auth credentials', () => {
+    expect(
+      redactSensitive({
+        sourceUrl: 'https://user:pass@rules.example.com/list?token=secret&signature=signed#key',
+      }),
+    ).toEqual({ sourceUrl: 'https://rules.example.com/list' });
+  });
 });

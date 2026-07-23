@@ -23,6 +23,8 @@ Rotation replaces the hash atomically, so the old URL immediately returns `SUBSC
 
 Responses use format-appropriate content types, `Cache-Control: private, no-store`, and a content-derived SHA-256 ETag. Both `200` and conditional `304` accesses update `lastAccessAt`; that database timestamp never changes the content or ETag. The credential-bearing response is deliberately not cacheable by shared or private caches. The endpoint is limited to 30 requests per minute per effective client IP. `TRUST_PROXY` is disabled by default outside Compose and must only be enabled behind the trusted Caddy hop. Automatic request logs replace the complete token path segment with `[REDACTED]`.
 
+V0.3 Rule Set references are resolved exclusively from local normalized cache. Public subscription requests never fetch remote providers. A retained `STALE` cache keeps the subscription available with an internal warning; unavailable or disabled references produce the same sanitized external compile-failure response used by inline policies. Fetch timestamps and remote validators do not enter output or ETag.
+
 Query parameters cannot override the administrator-bound format.
 
 ## Failure status

@@ -79,6 +79,9 @@ export type PolicyMatchType =
   | 'DST_PORT'
   | 'NETWORK';
 export type SubscriptionFormat = 'mihomo' | 'sing-box' | 'raw';
+export type PolicyMatchSource = 'INLINE' | 'RULE_SET';
+export type RuleSetSourceType = 'MANUAL' | 'REMOTE';
+export type RuleSetFormat = 'AUTO' | 'PROXYHUB_NATIVE' | 'PLAIN_TEXT' | 'MIHOMO';
 
 export interface PolicyRuleRecord {
   id: string;
@@ -89,6 +92,12 @@ export interface PolicyRuleRecord {
   priority: number;
   matchType: PolicyMatchType;
   matchValue: string;
+  matchSourceType: PolicyMatchSource;
+  ruleSetId: string | null;
+  ruleSet: Pick<
+    RuleSetRecord,
+    'id' | 'name' | 'enabled' | 'status' | 'ruleCount' | 'sourceType'
+  > | null;
   actionType: PolicyAction;
   nodePoolId: string | null;
   nodePool: { id: string; name: string; enabled: boolean } | null;
@@ -119,6 +128,9 @@ export interface CompilerDiagnosticRecord {
   ruleId?: string;
   ruleName?: string;
   ruleType?: PolicyMatchType;
+  ruleSetId?: string;
+  ruleSetName?: string;
+  sourceType?: RuleSetSourceType;
 }
 
 export interface CompilerPreviewRecord {
@@ -134,6 +146,9 @@ export interface CompilerPreviewRecord {
     ruleCount: number;
     nodeCount: number;
     poolCount: number;
+    sourceRuleCount: number;
+    expandedRuleCount: number;
+    ruleSetCount: number;
     adapter: {
       adapterName: SubscriptionFormat;
       adapterVersion: string;
@@ -155,4 +170,47 @@ export interface SubscriptionRecord {
   lastAccessAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RuleSetEntryRecord {
+  id: string;
+  ruleSetId: string;
+  type: PolicyMatchType;
+  value: string;
+  enabled: boolean;
+  order: number;
+}
+
+export interface RuleSetRecord {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  sourceType: RuleSetSourceType;
+  format: RuleSetFormat;
+  sourceUrl: string | null;
+  updateIntervalMinutes: number | null;
+  lastFetchAt: string | null;
+  lastSuccessAt: string | null;
+  nextUpdateAt: string | null;
+  status: 'READY' | 'UPDATING' | 'STALE' | 'ERROR' | 'DISABLED' | 'EMPTY';
+  lastError: string | null;
+  contentHash: string | null;
+  ruleCount: number;
+  revision: number;
+  entries?: RuleSetEntryRecord[];
+  policyRules?: Array<{ policy: { id: string; name: string } }>;
+  _count: { entries: number; policyRules: number };
+}
+
+export interface RuleSetPreviewRecord {
+  totalRules: number;
+  offset: number;
+  limit: number;
+  rules: Array<{ type: PolicyMatchType; value: string }>;
+  distribution: Record<string, number>;
+  duplicateCount: number;
+  warnings: CompilerDiagnosticRecord[];
+  status: RuleSetRecord['status'];
+  contentHash: string | null;
 }

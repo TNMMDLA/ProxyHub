@@ -235,6 +235,9 @@ model PolicyRule {
   priority    Int
   matchType   String
   matchValue  String
+  matchSourceType String @default("INLINE")
+  ruleSetId   String?
+  ruleSet     RuleSet?   @relation(fields: [ruleSetId], references: [id], onDelete: Restrict)
   actionType  String
   nodePoolId  String?
   nodePool    NodePool? @relation("PolicyRuleNodePool", fields: [nodePoolId], references: [id], onDelete: Restrict)
@@ -243,6 +246,64 @@ model PolicyRule {
 
   @@index([policyId, priority])
   @@index([nodePoolId])
+  @@index([ruleSetId])
+}
+
+model RuleSet {
+  id                    String         @id @default(cuid())
+  name                  String         @unique
+  description           String         @default("")
+  enabled               Boolean        @default(true)
+  sourceType            String
+  format                String
+  sourceUrl             String?
+  updateIntervalMinutes Int?
+  lastFetchAt           DateTime?
+  lastSuccessAt         DateTime?
+  nextUpdateAt          DateTime?
+  status                String         @default("EMPTY")
+  lastError             String?
+  contentHash           String?
+  ruleCount             Int            @default(0)
+  revision              Int            @default(1)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  entries               RuleSetEntry[]
+  cache                 RuleSetCache?
+  policyRules           PolicyRule[]
+
+  @@index([enabled, status])
+  @@index([nextUpdateAt])
+}
+
+model RuleSetEntry {
+  id        String   @id @default(cuid())
+  ruleSetId String
+  ruleSet   RuleSet  @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+  type      String
+  value     String
+  enabled   Boolean  @default(true)
+  order     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ruleSetId, order])
+}
+
+model RuleSetCache {
+  ruleSetId         String   @id
+  ruleSet           RuleSet  @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+  normalizedContent String
+  contentHash       String
+  ruleCount         Int
+  duplicateCount    Int      @default(0)
+  warnings          String   @default("[]")
+  sourceEtag        String?
+  sourceLastModified String?
+  fetchedAt         DateTime
+  validatedAt       DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model Subscription {

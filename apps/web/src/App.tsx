@@ -15,6 +15,7 @@ const SecurityPage = lazy(() => import('./pages/SecurityPage'));
 const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 const PolicyStudioPage = lazy(() => import('./pages/PolicyStudioPage'));
 const SubscriptionsPage = lazy(() => import('./pages/SubscriptionsPage'));
+const RuleSetsPage = lazy(() => import('./pages/RuleSetsPage'));
 
 function ScreenLoader() {
   return (
@@ -77,6 +78,14 @@ export function App() {
           element={
             <Suspense fallback={<ScreenLoader />}>
               <PolicyStudioPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/rule-sets"
+          element={
+            <Suspense fallback={<ScreenLoader />}>
+              <RuleSetsPage />
             </Suspense>
           }
         />

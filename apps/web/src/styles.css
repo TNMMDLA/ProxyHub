@@ -26,6 +26,301 @@
   --shadow: 0 18px 50px rgba(21, 44, 79, 0.12);
 }
 
+/* V0.3 reusable Rule Set workspace */
+.status-ready {
+  color: var(--green);
+  background: var(--green-soft);
+}
+.status-ready i {
+  background: var(--green);
+}
+.status-stale,
+.status-updating,
+.status-empty {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+.status-stale i,
+.status-updating i,
+.status-empty i {
+  background: var(--amber);
+}
+.status-error {
+  color: var(--red);
+  background: var(--red-soft);
+}
+.status-error i {
+  background: var(--red);
+}
+.rule-set-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 310px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.rule-set-list,
+.rule-set-detail {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.rule-set-list > header,
+.rule-set-title,
+.rule-entry-section,
+.rule-set-footer-actions {
+  padding: 20px;
+}
+.rule-set-list > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.rule-set-list > header span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.rule-set-list > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 18px;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+}
+.rule-set-list > button:hover,
+.rule-set-list > button.active {
+  background: var(--blue-soft);
+}
+.rule-set-list > button.active {
+  box-shadow: inset 3px 0 var(--blue);
+}
+.rule-set-list > button > span:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.rule-set-list b,
+.rule-set-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rule-set-list small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.rule-set-list > button .status {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.rule-set-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.rule-set-title h2 {
+  margin: 6px 0;
+}
+.rule-set-title p {
+  margin: 0;
+  color: var(--muted);
+}
+.rule-set-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rule-set-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.rule-set-metrics article {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 16px 20px;
+  background: var(--surface);
+}
+.rule-set-metrics article > span:first-child,
+.rule-set-remote dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.rule-set-metrics code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rule-set-notice {
+  margin: 18px 20px 0;
+  padding: 13px 15px;
+  display: grid;
+  gap: 4px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.rule-set-notice.warning {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+.rule-set-notice.error {
+  color: var(--red);
+  background: var(--red-soft);
+}
+.rule-set-remote {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--border);
+}
+.rule-set-remote div {
+  min-width: 0;
+  padding: 15px;
+  background: var(--surface);
+}
+.rule-set-remote dd {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+.rule-entry-section {
+  display: grid;
+  gap: 14px;
+}
+.rule-entry-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.rule-entry-search input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+.rule-entry-table {
+  max-height: 520px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.rule-entry-table > div {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.3fr) minmax(180px, 1fr) repeat(3, auto);
+  gap: 10px;
+  align-items: center;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border);
+  content-visibility: auto;
+  contain-intrinsic-size: 44px;
+}
+.rule-entry-table > div:last-child {
+  border-bottom: 0;
+}
+.rule-entry-table > div.disabled {
+  opacity: 0.55;
+}
+.rule-entry-table span {
+  overflow-wrap: anywhere;
+}
+.rule-entry-table button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.rule-set-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+.source-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.source-choice button {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+}
+.source-choice button.active {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+.rule-import {
+  min-height: 240px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.import-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+}
+.cache-preview {
+  display: grid;
+  gap: 14px;
+}
+
+@media (max-width: 980px) {
+  .rule-set-layout {
+    grid-template-columns: 1fr;
+  }
+  .rule-set-list {
+    max-height: 360px;
+    overflow: auto;
+  }
+  .rule-set-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .rule-set-title,
+  .rule-set-footer-actions,
+  .rule-set-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .rule-set-metrics,
+  .rule-set-remote {
+    grid-template-columns: 1fr;
+  }
+  .rule-entry-table > div {
+    grid-template-columns: 1fr auto auto;
+  }
+  .rule-entry-table > div span {
+    grid-column: 1 / -1;
+  }
+}
+
 .dark {
   color-scheme: dark;
   --bg: #0e1522;

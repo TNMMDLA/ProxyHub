@@ -17,7 +17,19 @@ import { compileStoredPolicy, maskCompilerOutput } from '../policy-service.js';
 const policyInclude = {
   defaultNodePool: { select: { id: true, name: true, enabled: true } },
   rules: {
-    include: { nodePool: { select: { id: true, name: true, enabled: true } } },
+    include: {
+      nodePool: { select: { id: true, name: true, enabled: true } },
+      ruleSet: {
+        select: {
+          id: true,
+          name: true,
+          enabled: true,
+          status: true,
+          ruleCount: true,
+          sourceType: true,
+        },
+      },
+    },
     orderBy: [{ priority: 'asc' as const }, { id: 'asc' as const }],
   },
   _count: { select: { subscriptions: true } },
@@ -30,6 +42,19 @@ async function validatedPoolId(action: string, poolId: string | null): Promise<s
     throw new AppError('POLICY_NODE_POOL_MISSING', 'The selected node pool does not exist', 422);
   }
   return poolId;
+}
+
+async function validatedRuleSetId(
+  matchSourceType: string,
+  ruleSetId: string | null,
+): Promise<string | null> {
+  if (matchSourceType !== 'RULE_SET') return null;
+  if (!ruleSetId)
+    throw new AppError('RULE_SET_NOT_FOUND', 'RULE_SET match requires a rule set', 422);
+  if (!(await prisma.ruleSet.findUnique({ where: { id: ruleSetId }, select: { id: true } }))) {
+    throw new AppError('RULE_SET_NOT_FOUND', 'The selected rule set does not exist', 422);
+  }
+  return ruleSetId;
 }
 
 async function notifyCompileFailure(policyName: string, errorCount: number): Promise<void> {
@@ -129,6 +154,8 @@ export const policyRoutes: FastifyPluginAsync = async (app) => {
               priority: rule.priority,
               matchType: rule.matchType,
               matchValue: rule.matchValue,
+              matchSourceType: rule.matchSourceType,
+              ruleSetId: rule.ruleSetId,
               actionType: rule.actionType,
               nodePoolId: rule.nodePoolId,
             })),
@@ -170,14 +197,21 @@ export const policyRoutes: FastifyPluginAsync = async (app) => {
         throw new AppError('POLICY_NOT_FOUND', 'Policy not found', 404);
       }
       const nodePoolId = await validatedPoolId(input.actionType, input.nodePoolId);
+      const ruleSetId = await validatedRuleSetId(input.matchSourceType, input.ruleSetId);
       const highest = await prisma.policyRule.aggregate({
         where: { policyId },
         _max: { priority: true },
       });
       const rule = await prisma.$transaction(async (transaction) => {
         const created = await transaction.policyRule.create({
-          data: { ...input, nodePoolId, policyId, priority: (highest._max.priority ?? 0) + 10 },
-          include: { nodePool: true },
+          data: {
+            ...input,
+            nodePoolId,
+            ruleSetId,
+            policyId,
+            priority: (highest._max.priority ?? 0) + 10,
+          },
+          include: { nodePool: true, ruleSet: true },
         });
         await transaction.policy.update({
           where: { id: policyId },
@@ -203,11 +237,12 @@ export const policyRoutes: FastifyPluginAsync = async (app) => {
       if (!current) throw new AppError('POLICY_RULE_NOT_FOUND', 'Policy rule not found', 404);
       const candidate = policyRuleInputSchema.parse({ ...current, ...patch });
       const nodePoolId = await validatedPoolId(candidate.actionType, candidate.nodePoolId);
+      const ruleSetId = await validatedRuleSetId(candidate.matchSourceType, candidate.ruleSetId);
       const rule = await prisma.$transaction(async (transaction) => {
         const updated = await transaction.policyRule.update({
           where: { id: ruleId },
-          data: { ...candidate, nodePoolId },
-          include: { nodePool: true },
+          data: { ...candidate, nodePoolId, ruleSetId },
+          include: { nodePool: true, ruleSet: true },
         });
         await transaction.policy.update({
           where: { id: policyId },

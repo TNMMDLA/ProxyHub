@@ -10,6 +10,10 @@ A Policy owns an ordered list of rules and one default action. Every enabled rul
 
 Evaluation is deterministic and uses **First Match Wins**. Dragging a card or using its arrow controls submits the complete rule ID order in one transaction. Rule create/update/delete/reorder increments the Policy revision.
 
+V0.3 match sources are either `INLINE` or `RULE_SET`. A Rule Set reference stores only `ruleSetId`; its action remains on the PolicyRule. `policy-core` expands the normalized local cache exactly at that card's position, then applies adapter capability validation. It never downloads remote content during preview or subscription requests.
+
+`STALE` Rule Sets compile from Last Known Good with `RULE_SET_STALE`. `EMPTY` continues with a warning. Missing, disabled, or cacheless `ERROR` Rule Sets block compilation. Compile metadata reports source rule count, expanded rule count, and referenced Rule Set count without embedding fetch timestamps in output.
+
 ## Supported match types
 
 | Match type     | Mihomo | sing-box            | Raw                      |

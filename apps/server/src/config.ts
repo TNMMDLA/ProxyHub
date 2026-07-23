@@ -26,6 +26,16 @@ const envSchema = z
     AGENT_URL: z.string().url().default('http://localhost:3001'),
     AGENT_TOKEN: z.string().min(16).default(DEVELOPMENT_AGENT_TOKEN),
     TRUST_PROXY: booleanFromEnvironment.default(false),
+    RULE_SET_MAX_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1024)
+      .max(50 * 1024 * 1024)
+      .default(5 * 1024 * 1024),
+    RULE_SET_MAX_RULES: z.coerce.number().int().min(100).max(200_000).default(50_000),
+    RULE_SET_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+    RULE_SET_MAX_REDIRECTS: z.coerce.number().int().min(0).max(10).default(3),
+    RULE_SET_ALLOW_HTTP: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     if (environment.NODE_ENV !== 'production') return;

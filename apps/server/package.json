@@ -1,6 +1,6 @@
 {
   "name": "@proxyhub/server",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,6 +21,7 @@
     "@fastify/rate-limit": "^10.0.0",
     "@prisma/client": "^6.19.0",
     "@proxyhub/policy-core": "workspace:*",
+    "@proxyhub/rule-set-core": "workspace:*",
     "@proxyhub/shared": "workspace:*",
     "@proxyhub/xray-manager": "workspace:*",
     "argon2": "^0.44.0",

@@ -17,6 +17,7 @@ import {
   Sun,
   Route as RouteIcon,
   Waypoints,
+  ListTree,
   X,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -40,6 +41,7 @@ const groups = [
     label: 'POLICY',
     items: [
       { to: '/policies', label: 'Policy Studio', icon: RouteIcon },
+      { to: '/rule-sets', label: 'Rule Sets', icon: ListTree },
       { to: '/subscriptions', label: 'Subscriptions', icon: Link2 },
     ],
   },
@@ -148,7 +150,7 @@ export function AppShell({ admin }: { admin: Admin }) {
             <i />
             {systemLabel}
           </span>
-          <small>v0.2.1 · Open source</small>
+          <small>v0.3 · Open source</small>
         </div>
       </aside>
       {sidebarOpen ? (
@@ -199,7 +201,7 @@ export function AppShell({ admin }: { admin: Admin }) {
         <footer>
           <span>© 2026 ProxyHub · Open source under MIT License</span>
           <span>
-            <i /> API online <b>v0.2.1</b>
+            <i /> API online <b>v0.3</b>
           </span>
         </footer>
       </main>

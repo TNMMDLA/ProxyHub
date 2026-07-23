@@ -1,0 +1,10 @@
+[
+  {
+    "type": "DOMAIN_SUFFIX",
+    "value": "ads.example"
+  },
+  {
+    "type": "DOMAIN_KEYWORD",
+    "value": "tracker"
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "name": "@proxyhub/rule-set-core",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^3.0.0"
+  }
+}

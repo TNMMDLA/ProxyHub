@@ -20,6 +20,10 @@ function diagnostic(
     message,
     adapter: format,
     ...(rule ? { ruleId: rule.id, ruleName: rule.name, ruleType: rule.matchType } : {}),
+    ...(rule?.ruleSetId ? { ruleSetId: rule.ruleSetId } : {}),
+    ...(rule?.ruleSetName ? { ruleSetName: rule.ruleSetName } : {}),
+    ...(rule?.ruleSetSourceType ? { sourceType: rule.ruleSetSourceType } : {}),
+    ...(rule?.entryIndex === undefined ? {} : { entryIndex: rule.entryIndex }),
   };
 }
 
@@ -93,6 +97,12 @@ export function validatePolicy(
   const errors: CompilerDiagnostic[] = [];
   const capability = CAPABILITIES[format];
 
+  for (const issue of input.ruleSetIssues) {
+    const item: CompilerDiagnostic = { ...issue, adapter: format };
+    if (issue.severity === 'ERROR') errors.push(item);
+    else warnings.push(item);
+  }
+
   if (!input.policy.enabled) {
     errors.push(
       diagnostic(format, 'ERROR', 'POLICY_DISABLED', `Policy "${input.policy.name}" is disabled.`),
@@ -109,6 +119,7 @@ export function validatePolicy(
   }
 
   const duplicateKeys = new Map<string, CompilerRule>();
+  const unsupportedOrigins = new Set<string>();
   for (const rule of input.rules) {
     if (!ruleValueValid(rule)) {
       errors.push(
@@ -122,15 +133,19 @@ export function validatePolicy(
       );
     }
     if (!capability.ruleTypes.has(rule.matchType)) {
-      warnings.push(
-        diagnostic(
-          format,
-          'WARNING',
-          'POLICY_RULE_UNSUPPORTED',
-          `${format} cannot represent ${rule.matchType}; the rule is not emitted.`,
-          rule,
-        ),
-      );
+      const origin = rule.originRuleId ?? rule.id;
+      if (!unsupportedOrigins.has(origin)) {
+        unsupportedOrigins.add(origin);
+        warnings.push(
+          diagnostic(
+            format,
+            'WARNING',
+            'POLICY_RULE_UNSUPPORTED',
+            `${format} cannot represent ${rule.matchType}; the rule is not emitted.`,
+            rule,
+          ),
+        );
+      }
     }
     if (rule.actionType === 'NODE_POOL') {
       if (rule.nodePoolId) requiredPoolIds.add(rule.nodePoolId);

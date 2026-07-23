@@ -49,7 +49,7 @@ afterEach(async () => {
 });
 
 describe('Prisma migration compatibility', () => {
-  it('creates the complete V0.2 schema from an empty database', async () => {
+  it('creates the complete V0.3 schema from an empty database', async () => {
     const databasePath = (await temporaryDatabase('fresh')).path;
     new DatabaseSync(databasePath).close();
     prisma(['migrate', 'deploy'], databasePath);
@@ -64,17 +64,20 @@ describe('Prisma migration compatibility', () => {
         'Policy',
         'PolicyRule',
         'Subscription',
+        'RuleSet',
+        'RuleSetEntry',
+        'RuleSetCache',
       ]) {
         expect(tables).toContain(table);
       }
       expect(
         database.prepare('SELECT COUNT(*) AS count FROM _prisma_migrations').get(),
-      ).toMatchObject({ count: 2 });
+      ).toMatchObject({ count: 3 });
       expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally {
       database.close();
     }
-  });
+  }, 15_000);
 
   it('upgrades a populated V0.1.1 database without losing auth, nodes, or pools', async () => {
     const databasePath = (await temporaryDatabase('upgrade')).path;
@@ -155,4 +158,92 @@ describe('Prisma migration compatibility', () => {
       upgraded.close();
     }
   }, 15_000);
+
+  it('upgrades a populated V0.2.1 database to V0.3 without losing existing records', async () => {
+    const databasePath = (await temporaryDatabase('v021-upgrade')).path;
+    const database = new DatabaseSync(databasePath);
+    database.exec('PRAGMA foreign_keys = ON');
+    database.exec(readFileSync(join(migrations, '20260722000100_init/migration.sql'), 'utf8'));
+    database.exec(
+      readFileSync(
+        join(migrations, '20260723000100_v02_policy_subscription/migration.sql'),
+        'utf8',
+      ),
+    );
+    database.exec(`
+      INSERT INTO "AdminUser" ("id", "username", "passwordHash", "updatedAt")
+        VALUES ('admin-v021', 'v021-admin', 'argon2id-v021', CURRENT_TIMESTAMP);
+      INSERT INTO "Session" ("id", "tokenHash", "userId", "ip", "userAgent", "expiresAt")
+        VALUES ('session-v021', 'session-v021-hash', 'admin-v021', '127.0.0.1', 'migration-test', '2099-01-01T00:00:00.000Z');
+      INSERT INTO "Server" ("id", "name", "hostname", "ip", "updatedAt")
+        VALUES ('server-v021', 'V0.2.1 Server', 'v021-vps', '192.0.2.20', CURRENT_TIMESTAMP);
+      INSERT INTO "Node" (
+        "id", "serverId", "name", "host", "port", "uuid", "realityPublicKey",
+        "realityPrivateKeyEncrypted", "shortId", "sni", "dest", "updatedAt"
+      ) VALUES (
+        'node-v021', 'server-v021', 'V0.2.1 Node', 'edge-v021.example.com', 443,
+        '22222222-2222-4222-8222-222222222222', 'public-v021', 'encrypted-private-v021',
+        'abcdef0123456789', 'www.microsoft.com', 'www.microsoft.com:443', CURRENT_TIMESTAMP
+      );
+      INSERT INTO "NodePool" ("id", "name", "updatedAt")
+        VALUES ('pool-v021', 'V0.2.1 Pool', CURRENT_TIMESTAMP);
+      INSERT INTO "NodePoolMember" ("nodeId", "nodePoolId", "priority")
+        VALUES ('node-v021', 'pool-v021', 0);
+      INSERT INTO "Policy" ("id", "name", "defaultAction", "defaultNodePoolId", "updatedAt")
+        VALUES ('policy-v021', 'V0.2.1 Policy', 'NODE_POOL', 'pool-v021', CURRENT_TIMESTAMP);
+      INSERT INTO "PolicyRule" (
+        "id", "policyId", "name", "priority", "matchType", "matchValue", "actionType", "nodePoolId", "updatedAt"
+      ) VALUES (
+        'rule-v021', 'policy-v021', 'V0.2.1 Rule', 10, 'DOMAIN_SUFFIX', 'example.com',
+        'NODE_POOL', 'pool-v021', CURRENT_TIMESTAMP
+      );
+      INSERT INTO "Subscription" (
+        "id", "name", "policyId", "format", "tokenHash", "tokenPrefix", "updatedAt"
+      ) VALUES (
+        'subscription-v021', 'V0.2.1 Subscription', 'policy-v021', 'mihomo',
+        'subscription-v021-hash', 'v021pref', CURRENT_TIMESTAMP
+      );
+    `);
+    database.close();
+
+    prisma(['migrate', 'resolve', '--applied', '20260722000100_init'], databasePath);
+    prisma(
+      ['migrate', 'resolve', '--applied', '20260723000100_v02_policy_subscription'],
+      databasePath,
+    );
+    prisma(['migrate', 'deploy'], databasePath);
+
+    const upgraded = new DatabaseSync(databasePath);
+    upgraded.exec('PRAGMA foreign_keys = ON');
+    try {
+      expect(upgraded.prepare('SELECT username FROM AdminUser').get()).toMatchObject({
+        username: 'v021-admin',
+      });
+      expect(upgraded.prepare('SELECT name FROM Node').get()).toMatchObject({
+        name: 'V0.2.1 Node',
+      });
+      expect(upgraded.prepare('SELECT name FROM NodePool').get()).toMatchObject({
+        name: 'V0.2.1 Pool',
+      });
+      expect(upgraded.prepare('SELECT name FROM Policy').get()).toMatchObject({
+        name: 'V0.2.1 Policy',
+      });
+      expect(
+        upgraded.prepare('SELECT name, matchSourceType, ruleSetId FROM PolicyRule').get(),
+      ).toMatchObject({
+        name: 'V0.2.1 Rule',
+        matchSourceType: 'INLINE',
+        ruleSetId: null,
+      });
+      expect(upgraded.prepare('SELECT name FROM Subscription').get()).toMatchObject({
+        name: 'V0.2.1 Subscription',
+      });
+      expect(tableNames(upgraded)).toEqual(
+        expect.arrayContaining(['RuleSet', 'RuleSetEntry', 'RuleSetCache']),
+      );
+      expect(upgraded.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  }, 20_000);
 });

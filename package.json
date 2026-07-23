@@ -1,6 +1,6 @@
 {
   "name": "proxyhub",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Modern proxy infrastructure management platform",
@@ -19,6 +19,7 @@
     "compat:generate": "tsx scripts/compat/generate-configs.ts",
     "compat:validate:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/compat/validate-windows.ps1",
     "test:migration": "vitest run apps/server/src/migration.integration.test.ts",
+    "test:rulesets": "vitest run packages/rule-set-core/src apps/server/src/rule-set packages/policy-core/src/rule-set.test.ts",
     "db:generate": "pnpm --filter @proxyhub/server db:generate",
     "db:migrate": "pnpm --filter @proxyhub/server db:migrate",
     "db:seed": "pnpm --filter @proxyhub/server db:seed"

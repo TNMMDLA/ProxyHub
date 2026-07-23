@@ -1,10 +1,10 @@
 # ProxyHub
 
-ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.2 adds a client-independent Policy Studio and secure subscription compiler to the stabilized V0.1 infrastructure foundation.
+ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.3 adds reusable manual and remotely refreshed Rule Sets to the client-independent Policy Studio and secure subscription compiler.
 
 ![ProxyHub dashboard design](docs/design/proxyhub-dashboard-concept.png)
 
-> Status: **V0.2.1 Development / Pre-production**. Compiler fixtures, migration upgrades, subscription security, and fixed-version client-core checks are automated. **V0.1.1 Linux Production Smoke Test Pending**; passing CI does not constitute production acceptance.
+> Status: **V0.3 Development / Pre-production**. Rule Set parsing, SSRF protection, Last Known Good caching, deterministic compiler expansion, migration upgrades, and fixed-version client-core checks are automated. **Linux Production Smoke Test Pending**; passing CI does not constitute production acceptance.
 
 ### V0.1.1 implementation notes
 
@@ -32,6 +32,8 @@ ProxyHub is a modern, open-source proxy infrastructure management platform for L
 - Deterministic Mihomo, sing-box, and raw VLESS subscription compilers with explicit diagnostics
 - Hashed, rotatable subscription tokens with expiry, rate limiting, ETag, and one-time token display
 - Policy Studio and subscription management pages with masked-by-default previews
+- Reusable Manual and Remote Rule Sets with normalized cache, deterministic SHA-256 revisions, bounded previews, import/export, and Policy usage protection
+- HTTPS-only remote provider fetching with DNS/redirect SSRF validation, decompressed size limits, timeouts, conditional ETag/Last-Modified refresh, and Last Known Good fallback
 - Light/dark themes, command palette, responsive navigation, tables, dialogs, and QR sharing
 - SQLite through Prisma migrations, with a schema designed for later PostgreSQL migration
 - Docker Compose deployment with Caddy automatic HTTPS
@@ -50,6 +52,8 @@ flowchart LR
   Config --> Xray["Xray-core"]
   Supervisor --> Xray
   API --> Policy["Policy compiler core"]
+  API --> Rules["Rule Set fetch / parse / cache"]
+  Rules --> Policy
   Policy --> Sub["Mihomo / sing-box / raw VLESS"]
 ```
 
@@ -94,17 +98,22 @@ docker compose logs -f proxyhub-server proxyhub-agent xray caddy
 
 ## Environment variables
 
-| Variable                 | Required           | Default                      | Purpose                                                      |
-| ------------------------ | ------------------ | ---------------------------- | ------------------------------------------------------------ |
-| `PANEL_DOMAIN`           | Yes for public use | `localhost`                  | Caddy host and certificate name                              |
-| `WEB_ORIGIN`             | Yes for public use | `https://localhost`          | Allowed credentialed browser origin                          |
-| `ENCRYPTION_KEY`         | Yes                | none in Compose              | Encrypts TOTP and Reality secrets; use 32+ random characters |
-| `AGENT_TOKEN`            | Yes                | none in Compose              | Authenticates controller-to-Agent calls                      |
-| `DATABASE_URL`           | No                 | `file:/app/data/proxyhub.db` | Prisma SQLite database URL                                   |
-| `SESSION_TTL_HOURS`      | No                 | `24`                         | Session lifetime                                             |
-| `TRUST_PROXY`            | No                 | `true` in Compose            | Trusts Caddy forwarding headers                              |
-| `XRAY_BINARY`            | No                 | `/usr/local/bin/xray`        | Fixed Xray executable path                                   |
-| `XRAY_HEALTH_TIMEOUT_MS` | No                 | `12000`                      | Restart acknowledgement and health-check timeout             |
+| Variable                    | Required           | Default                      | Purpose                                                      |
+| --------------------------- | ------------------ | ---------------------------- | ------------------------------------------------------------ |
+| `PANEL_DOMAIN`              | Yes for public use | `localhost`                  | Caddy host and certificate name                              |
+| `WEB_ORIGIN`                | Yes for public use | `https://localhost`          | Allowed credentialed browser origin                          |
+| `ENCRYPTION_KEY`            | Yes                | none in Compose              | Encrypts TOTP and Reality secrets; use 32+ random characters |
+| `AGENT_TOKEN`               | Yes                | none in Compose              | Authenticates controller-to-Agent calls                      |
+| `DATABASE_URL`              | No                 | `file:/app/data/proxyhub.db` | Prisma SQLite database URL                                   |
+| `SESSION_TTL_HOURS`         | No                 | `24`                         | Session lifetime                                             |
+| `TRUST_PROXY`               | No                 | `true` in Compose            | Trusts Caddy forwarding headers                              |
+| `XRAY_BINARY`               | No                 | `/usr/local/bin/xray`        | Fixed Xray executable path                                   |
+| `XRAY_HEALTH_TIMEOUT_MS`    | No                 | `12000`                      | Restart acknowledgement and health-check timeout             |
+| `RULE_SET_MAX_BYTES`        | No                 | `5242880`                    | Maximum decompressed remote Rule Set response                |
+| `RULE_SET_MAX_RULES`        | No                 | `50000`                      | Maximum normalized rules per remote source                   |
+| `RULE_SET_FETCH_TIMEOUT_MS` | No                 | `10000`                      | Remote fetch timeout in milliseconds                         |
+| `RULE_SET_MAX_REDIRECTS`    | No                 | `3`                          | Maximum validated redirects                                  |
+| `RULE_SET_ALLOW_HTTP`       | No                 | `false`                      | Development-only HTTP opt-in; keep false in production       |
 
 Never reuse `ENCRYPTION_KEY` as the Agent token. Back up the encryption key separately; encrypted secrets cannot be recovered without it.
 Production startup rejects the development defaults and the placeholder values from `.env.example`.
@@ -140,11 +149,12 @@ pnpm test
 pnpm build
 pnpm test:compat
 pnpm test:migration
+pnpm test:rulesets
 # Windows: download, checksum, and validate with the pinned official client cores
 pnpm compat:validate:windows
 ```
 
-The integration suite creates isolated SQLite databases, tests both a fresh migration and a populated V0.1.1-to-V0.2 upgrade, and covers administrator bootstrap, sessions, TOTP, recovery codes, transactional Reality node synchronization, failed-apply rollback, node-pool replacement, dashboard health aggregation, policy and rule lifecycle, deterministic compilation, subscription token rotation/expiry, rate limiting, ETag/cache behavior, notifications, and audit logs. GitHub Actions additionally builds every Compose image and validates generated configurations with checksum-pinned official Mihomo and sing-box CLI releases.
+The integration suite creates isolated SQLite databases, tests fresh, V0.1.1, and populated V0.2.1-to-V0.3 upgrades, and covers administrator security, Xray rollback, policies, Rule Set CRUD/import/cache/SSRF/LKG/concurrency, deterministic compilation, subscriptions, notifications, and audit logs. GitHub Actions additionally builds every Compose image and validates Rule Set-expanded configurations with checksum-pinned official Mihomo and sing-box CLI releases.
 
 The complete Linux deployment acceptance procedure is in [docs/deployment-smoke-test.md](docs/deployment-smoke-test.md).
 
@@ -187,6 +197,14 @@ All responses use `{ "success": true, "data": ... }` or:
 | `PATCH`, `DELETE`        | `/api/policies/:id/rules/:ruleId`     | Update/delete a rule                       |
 | `PUT`                    | `/api/policies/:id/rules/reorder`     | Persist the complete rule order            |
 | `POST`                   | `/api/policies/:id/compile-preview`   | Compile with diagnostics                   |
+| `GET`, `POST`            | `/api/rule-sets`                      | List/create Rule Sets                      |
+| `GET`, `PATCH`, `DELETE` | `/api/rule-sets/:id`                  | Read/update/delete with usage protection   |
+| `POST`                   | `/api/rule-sets/:id/refresh`          | Refresh a remote source                    |
+| `GET`                    | `/api/rule-sets/:id/preview`          | Read a bounded normalized-cache preview    |
+| `POST`                   | `/api/rule-sets/test-source`          | SSRF-safe remote source test               |
+| `POST`                   | `/api/rule-sets/parse-preview`        | Parse import content without saving        |
+| `POST`                   | `/api/rule-sets/:id/import`           | Confirm manual bulk import                 |
+| `GET`                    | `/api/rule-sets/:id/export`           | Export ProxyHub Native normalized rules    |
 | `GET`, `POST`            | `/api/subscriptions`                  | List/create subscriptions                  |
 | `GET`, `PATCH`, `DELETE` | `/api/subscriptions/:id`              | Read/update/delete a subscription          |
 | `POST`                   | `/api/subscriptions/:id/rotate-token` | Rotate and display a token once            |
@@ -203,7 +221,7 @@ All responses use `{ "success": true, "data": ... }` or:
 
 ## Database
 
-The foundation migration creates `AdminUser`, `Session`, `RecoveryCode`, `ApiToken`, `Server`, `Agent`, `Node`, `NodePool`, `NodePoolMember`, `Notification`, `SecurityEvent`, `AuditLog`, and `SystemSetting`. The additive V0.2 migration creates `Policy`, `PolicyRule`, and `Subscription` without rebuilding or deleting foundation data.
+The foundation migration creates infrastructure and security tables. The additive V0.2 migration creates `Policy`, `PolicyRule`, and `Subscription`. The additive V0.3 migration creates `RuleSet`, `RuleSetEntry`, and `RuleSetCache`, then adds restrictive Rule Set references to `PolicyRule`; existing rules remain `INLINE` and no existing table or data is dropped.
 
 Sensitive values are never stored in plaintext:
 
@@ -223,6 +241,7 @@ packages/
   shared/              Shared schemas, API types, event constants
   xray-manager/        Reality adapter and validated config operations
   policy-core/         Normalizer, validator, capability matrix, and client adapters
+  rule-set-core/       Source parsers, normalization, deduplication, hashing, Golden tests
 docker/                Images, Caddy, nginx, Xray supervisor
 docs/design/           Accepted visual design reference
 ```
@@ -236,7 +255,7 @@ docs/design/           Accepted visual design reference
 - ProxyHub reports SSH/firewall recommendations but does not modify host SSH policy automatically.
 - The V0.1 Agent token is a foundation mechanism; mutually authenticated remote Agent enrollment is planned.
 
-## V0.2 documentation
+## Architecture and operations documentation
 
 - [Architecture and data flow](docs/v0.2-architecture.md)
 - [Policy Studio and compiler behavior](docs/policy-studio.md)
@@ -244,10 +263,14 @@ docs/design/           Accepted visual design reference
 - [V0.2.1 stabilization scope and evidence](docs/v0.2.1-stabilization.md)
 - [Subscription compatibility matrix](docs/subscription-compatibility.md)
 - [Linux VPS deployment smoke test](docs/deployment-smoke-test.md)
+- [V0.3 Rule Set architecture](docs/v0.3-architecture.md)
+- [Rule Set lifecycle and formats](docs/rule-sets.md)
+- [Remote Rule Providers](docs/remote-rule-providers.md)
+- [Rule Set SSRF and cache security](docs/rule-set-security.md)
 
 ## Roadmap
 
-V0.2 is intentionally limited to policies, deterministic client adapters, and secure subscriptions. Traffic collection, quotas, billing, remote Agent enrollment, users/plans, imports, automation, and multi-server orchestration remain future work. No V0.3 feature is included in this revision.
+V0.3 is intentionally limited to a reusable Rule Set and Policy ecosystem. Distributed controllers, marketplace/sharing, AI rule generation, traffic collection, quotas, billing, mobile apps, and multi-server orchestration remain future work. V0.4 development has not started.
 
 ## Contributing
 

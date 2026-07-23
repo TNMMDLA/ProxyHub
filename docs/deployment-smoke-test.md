@@ -1,6 +1,6 @@
-# ProxyHub V0.1.1 / V0.2.1 Linux VPS Deployment Smoke Test
+# ProxyHub V0.1.1 / V0.2.1 / V0.3 Linux VPS Deployment Smoke Test
 
-Run this checklist on a disposable Linux VPS before declaring V0.1.1 or V0.2.1 production-ready. The current release status remains **V0.1.1 Linux Production Smoke Test Pending**. A green CI run is necessary but is not a substitute for this host-level test. Do not run destructive or deliberate failure cases against an active production deployment.
+Run this checklist on a disposable Linux VPS before declaring ProxyHub production-ready. The current release status remains **Linux Production Smoke Test Pending**. A green CI run is necessary but is not a substitute for this host-level test. Do not run destructive or deliberate failure cases against an active production deployment.
 
 ## 1. Prerequisites
 
@@ -8,7 +8,7 @@ Run this checklist on a disposable Linux VPS before declaring V0.1.1 or V0.2.1 p
 - Public DNS record pointing to the VPS
 - Inbound TCP 80/443 and UDP 443 allowed
 - An additional TCP port available for the Reality node test
-- Repository checked out at the V0.2.1 revision under test
+- Repository checked out at the V0.3 revision under test
 
 Record these values without committing them:
 
@@ -83,7 +83,7 @@ docker compose exec proxyhub-server \
   pnpm --filter @proxyhub/server exec prisma migrate status
 ```
 
-Expected: both the foundation and additive V0.2 migrations are present and the database schema is up to date. Confirm `Policy`, `PolicyRule`, and `Subscription` were added without rebuilding existing tables. Restart the stack once and confirm the SQLite volume retains the same administrator, server, node, and pool records.
+Expected: the foundation, additive V0.2, and additive V0.3 migrations are present and the database schema is up to date. Confirm `Policy`, `PolicyRule`, `Subscription`, `RuleSet`, `RuleSetEntry`, and `RuleSetCache` exist without rebuilding or dropping prior tables. Restart the stack once and confirm the SQLite volume retains the same administrator, server, node, pool, policy, rule, and subscription records.
 
 ## 5. Backend and HTTPS
 
@@ -222,7 +222,19 @@ For the staging failure test, verify the audit result is `FAILURE`, the notifica
 2. Confirm cards, dialogs, diagnostics, and navigation remain usable without horizontal page overflow.
 3. Confirm the browser console and failed-network-request list contain no unexpected errors.
 
-## 14. Final acceptance
+## 14. V0.3 Rule Sets
+
+1. Create a Manual Rule Set, bulk-import OpenAI domain rules, inspect the preview/hash, export Native JSON, and reference it from Policy Studio.
+2. Confirm Mihomo/sing-box previews expand the rules at the PolicyRule card position while Raw output remains unchanged.
+3. Create a Remote HTTPS Rule Set using a controlled public source. Test Source, refresh, conditional `304`, and automatic interval refresh.
+4. Make the source return invalid content. Confirm status becomes `STALE`, the previous content hash/cache remains, and subscriptions still compile with `RULE_SET_STALE`.
+5. Restore valid changed content. Confirm `READY`, one recovery notification, new hash/revision, and updated subscriptions.
+6. Test a source with no prior cache and a failure; confirm `ERROR` and compile failure.
+7. Confirm private/loopback/metadata URLs, userinfo, HTTP, and redirect-to-private targets are rejected without query secrets in logs, Audit Logs, notifications, or errors.
+8. Disable a referenced Rule Set and confirm a high-value notification and blocking diagnostic. Confirm delete returns `RULE_SET_IN_USE` until the Policy reference is removed.
+9. Exercise Rule Sets and Policy Studio at 390 px with no horizontal overflow or browser console warnings.
+
+## 15. Final acceptance
 
 ```bash
 docker compose ps
@@ -231,4 +243,4 @@ curl --fail --silent --show-error "https://${PANEL_DOMAIN}/api/health"
 docker compose logs --since=10m proxyhub-server proxyhub-agent xray caddy
 ```
 
-V0.1.1 and V0.2.1 pass only when all services remain healthy, the browser has no runtime errors, successful Node changes reach Xray, failed changes preserve the prior configuration and database state, pool/audit/notification flows match the UI, all policy adapters compile deterministically with explicit diagnostics, and subscription token lifecycle checks pass. Separately record GUI import results for the clients listed in the compatibility matrix; do not infer GUI compatibility from a CLI-only pass.
+ProxyHub passes only when all services remain healthy, the browser has no runtime errors, failed Node and Rule Set updates preserve their respective Last Known Good state, audit/notification flows match the UI, all policy adapters compile deterministically with explicit diagnostics, and subscription token lifecycle checks pass. Separately record GUI import results for the clients listed in the compatibility matrix; do not infer GUI compatibility from a CLI-only pass.
