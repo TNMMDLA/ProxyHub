@@ -54,7 +54,7 @@ docker compose ps
 Expected services:
 
 - `proxyhub-web`: running
-- `proxyhub-server`: running
+- `proxyhub-server`: healthy, with zero restart loops
 - `proxyhub-agent`: healthy
 - `xray`: healthy
 - `caddy`: running

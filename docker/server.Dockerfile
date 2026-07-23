@@ -13,7 +13,10 @@ COPY packages/shared packages/shared
 COPY packages/xray-manager packages/xray-manager
 COPY packages/policy-core packages/policy-core
 COPY packages/rule-set-core packages/rule-set-core
-RUN pnpm --filter @proxyhub/server db:generate && pnpm --filter @proxyhub/server... build
+COPY scripts/runtime/verify-workspace-packages.mjs scripts/runtime/verify-workspace-packages.mjs
+RUN pnpm --filter @proxyhub/server db:generate \
+  && pnpm --filter @proxyhub/server... build \
+  && node scripts/runtime/verify-workspace-packages.mjs
 
 FROM node:24-alpine
 RUN corepack enable

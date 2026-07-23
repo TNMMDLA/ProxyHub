@@ -150,11 +150,12 @@ pnpm build
 pnpm test:compat
 pnpm test:migration
 pnpm test:rulesets
+pnpm test:runtime-packages
 # Windows: download, checksum, and validate with the pinned official client cores
 pnpm compat:validate:windows
 ```
 
-The integration suite creates isolated SQLite databases, tests fresh, V0.1.1, and populated V0.2.1-to-V0.3 upgrades, and covers administrator security, Xray rollback, policies, Rule Set CRUD/import/cache/SSRF/LKG/concurrency, deterministic compilation, subscriptions, notifications, and audit logs. GitHub Actions additionally builds every Compose image and validates Rule Set-expanded configurations with checksum-pinned official Mihomo and sing-box CLI releases.
+The integration suite creates isolated SQLite databases, tests fresh, V0.1.1, and populated V0.2.1-to-V0.3 upgrades, and covers administrator security, Xray rollback, policies, Rule Set CRUD/import/cache/SSRF/LKG/concurrency, deterministic compilation, subscriptions, notifications, and audit logs. The runtime package regression asserts that every Server workspace dependency resolves to compiled `dist/index.js`, never TypeScript under `src`. GitHub Actions additionally builds every Compose image, starts Xray, Agent, and Server, verifies all three are healthy with zero restarts, calls `/api/health`, and validates Rule Set-expanded configurations with checksum-pinned official Mihomo and sing-box CLI releases.
 
 The complete Linux deployment acceptance procedure is in [docs/deployment-smoke-test.md](docs/deployment-smoke-test.md).
 

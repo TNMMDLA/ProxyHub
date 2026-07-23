@@ -26,6 +26,18 @@ services:
     depends_on:
       proxyhub-agent:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/health').then(async r=>{const b=await r.json();if(!r.ok||b?.success!==true||b?.data?.status!=='ok')process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
     networks: [proxyhub]
 
   proxyhub-web:
