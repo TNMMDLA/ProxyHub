@@ -4,24 +4,19 @@ import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import Fastify from 'fastify';
 import { z } from 'zod';
 import {
-  applyValidatedConfig,
   restoreValidatedConfig,
   testXrayConfig,
+  xrayConfigLifecyclePath,
 } from '@proxyhub/xray-manager';
 import { parseAgentConfig } from './config.js';
 import { inspectXrayHealth, waitForHealthyXray } from './xray-health.js';
+import {
+  applyXrayConfigLifecycle,
+  XrayLifecycleError,
+  xrayRollbackPath,
+} from './xray-lifecycle.js';
 
 const env = parseAgentConfig(process.env);
-
-class AgentOperationError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'AgentOperationError';
-  }
-}
 
 const app = Fastify({
   logger: {
@@ -58,10 +53,6 @@ async function restartXrayAndWait(): Promise<Awaited<ReturnType<typeof waitForHe
   return waitForHealthyXray(env);
 }
 
-function rollbackPath(revision: string): string {
-  return `${env.XRAY_CONFIG_PATH}.rollback-${revision}`;
-}
-
 app.addHook('preHandler', async (request, reply) => {
   const candidate = request.headers.authorization?.replace(/^Bearer\s+/i, '') ?? '';
   const expected = createHash('sha256').update(env.AGENT_TOKEN).digest();
@@ -92,7 +83,7 @@ app.get('/status', async () => {
 
 app.post('/xray/validate', async (request) => {
   const body = z.object({ config: z.record(z.string(), z.unknown()) }).parse(request.body);
-  const temporary = `${env.XRAY_CONFIG_PATH}.validation-${randomUUID()}`;
+  const temporary = xrayConfigLifecyclePath(env.XRAY_CONFIG_PATH, 'validation', randomUUID());
   try {
     await writeFile(temporary, JSON.stringify(body.config, null, 2), { mode: 0o600 });
     await testXrayConfig(env.XRAY_BINARY, temporary);
@@ -105,31 +96,21 @@ app.post('/xray/validate', async (request) => {
 app.post('/xray/apply', async (request) => {
   const body = z.object({ config: z.record(z.string(), z.unknown()) }).parse(request.body);
   return withXrayLock(async () => {
-    const revision = randomUUID();
-    const backupPath = rollbackPath(revision);
-    await applyValidatedConfig(env.XRAY_BINARY, env.XRAY_CONFIG_PATH, body.config, {
-      backupPath,
-      requireExisting: true,
+    const result = await applyXrayConfigLifecycle({
+      binary: env.XRAY_BINARY,
+      configPath: env.XRAY_CONFIG_PATH,
+      config: body.config,
+      restartAndWait: restartXrayAndWait,
     });
-    try {
-      const health = await restartXrayAndWait();
-      return { success: true, data: { applied: true, restarted: true, revision, health } };
-    } catch (error) {
-      try {
-        await restoreValidatedConfig(env.XRAY_BINARY, env.XRAY_CONFIG_PATH, backupPath);
-        await restartXrayAndWait();
-        await rm(backupPath, { force: true });
-      } catch (rollbackError) {
-        throw new AgentOperationError(
-          'XRAY_ROLLBACK_FAILED',
-          `The new configuration was unhealthy and automatic rollback failed: ${(rollbackError as Error).message}`,
-        );
-      }
-      throw new AgentOperationError(
-        'XRAY_CONFIG_ROLLED_BACK',
-        `The new configuration was unhealthy and the previous configuration was restored: ${(error as Error).message}`,
-      );
-    }
+    return {
+      success: true,
+      data: {
+        applied: true,
+        restarted: true,
+        revision: result.revision,
+        health: result.health,
+      },
+    };
   });
 });
 
@@ -147,7 +128,7 @@ const revisionSchema = z.object({ revision: z.string().uuid() });
 app.post('/xray/rollback', async (request) => {
   const { revision } = revisionSchema.parse(request.body);
   return withXrayLock(async () => {
-    const backupPath = rollbackPath(revision);
+    const backupPath = xrayRollbackPath(env.XRAY_CONFIG_PATH, revision);
     await restoreValidatedConfig(env.XRAY_BINARY, env.XRAY_CONFIG_PATH, backupPath);
     const health = await restartXrayAndWait();
     await rm(backupPath, { force: true });
@@ -157,15 +138,16 @@ app.post('/xray/rollback', async (request) => {
 
 app.post('/xray/confirm', async (request) => {
   const { revision } = revisionSchema.parse(request.body);
-  await rm(rollbackPath(revision), { force: true });
+  await rm(xrayRollbackPath(env.XRAY_CONFIG_PATH, revision), { force: true });
   return { success: true, data: { confirmed: true } };
 });
 
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
   const message = error instanceof Error ? error.message : 'Agent operation failed';
-  const code = error instanceof AgentOperationError ? error.code : 'AGENT_OPERATION_FAILED';
-  return reply.code(error instanceof AgentOperationError ? 500 : 400).send({
+  const operationError = error instanceof XrayLifecycleError;
+  const code = operationError ? error.code : 'AGENT_OPERATION_FAILED';
+  return reply.code(operationError ? 500 : 400).send({
     success: false,
     error: { code, message },
   });

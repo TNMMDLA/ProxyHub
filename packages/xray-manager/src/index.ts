@@ -2,6 +2,7 @@ import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, copyFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
+import { join, parse } from 'node:path';
 import { spawn } from 'node:child_process';
 
 export interface RealityCredentials {
@@ -116,6 +117,20 @@ export async function getXrayServiceStatus(): Promise<string> {
   return runAllowed('systemctl', ['is-active', 'xray']);
 }
 
+/**
+ * Creates a sibling lifecycle path while keeping JSON as the final extension so
+ * Xray can infer the format during `run -test`.
+ */
+export function xrayConfigLifecyclePath(
+  configPath: string,
+  stage: 'backup' | 'next' | 'restore' | 'rollback' | 'validation',
+  operationId: string,
+): string {
+  const parsed = parse(configPath);
+  const baseName = parsed.ext.toLowerCase() === '.json' ? parsed.name : parsed.base;
+  return join(parsed.dir, `${baseName}.${stage}-${operationId}.json`);
+}
+
 /** Writes only after validation; the previous config is retained as .bak. */
 export async function applyValidatedConfig(
   binary: string,
@@ -128,9 +143,10 @@ export async function applyValidatedConfig(
   } = {},
 ): Promise<{ hadPreviousConfig: boolean }> {
   const operationId = randomUUID();
-  const temporaryPath = `${targetPath}.next-${operationId}`;
-  const backupPath = options.backupPath ?? `${targetPath}.bak`;
-  const backupTemporaryPath = `${backupPath}.next-${operationId}`;
+  const temporaryPath = xrayConfigLifecyclePath(targetPath, 'next', operationId);
+  const backupPath =
+    options.backupPath ?? xrayConfigLifecyclePath(targetPath, 'backup', 'previous');
+  const backupTemporaryPath = xrayConfigLifecyclePath(backupPath, 'next', operationId);
   let hadPreviousConfig = false;
   await writeFile(temporaryPath, JSON.stringify(config, null, 2), { mode: 0o600 });
   try {
@@ -163,7 +179,7 @@ export async function restoreValidatedConfig(
   backupPath: string,
   validate: (binary: string, configPath: string) => Promise<string> = testXrayConfig,
 ): Promise<void> {
-  const temporaryPath = `${targetPath}.rollback-${randomUUID()}`;
+  const temporaryPath = xrayConfigLifecyclePath(targetPath, 'restore', randomUUID());
   try {
     await access(backupPath);
     await copyFile(backupPath, temporaryPath);

@@ -8,6 +8,7 @@ import {
   createVlessUri,
   generateRealityCredentials,
   restoreValidatedConfig,
+  xrayConfigLifecyclePath,
 } from './index.js';
 
 describe('xray-manager', () => {
@@ -88,10 +89,22 @@ describe('xray-manager', () => {
   it('removes the temporary config when Xray validation fails', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'proxyhub-xray-'));
     const targetPath = join(directory, 'config.json');
+    let validationPath = '';
     try {
       await expect(
-        applyValidatedConfig(process.execPath, targetPath, { inbounds: [], outbounds: [] }),
+        applyValidatedConfig(
+          'test-xray',
+          targetPath,
+          { inbounds: [], outbounds: [] },
+          {
+            validate: async (_binary, configPath) => {
+              validationPath = configPath;
+              throw new Error('invalid config');
+            },
+          },
+        ),
       ).rejects.toThrow(/validation failed/i);
+      expect(validationPath).toMatch(/config\.next-[0-9a-f-]+\.json$/);
       const remainingFiles = await import('node:fs/promises').then(({ readdir }) =>
         readdir(directory),
       );
@@ -104,8 +117,13 @@ describe('xray-manager', () => {
   it('atomically retains and restores a revision backup', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'proxyhub-xray-'));
     const targetPath = join(directory, 'config.json');
-    const backupPath = join(directory, 'config.rollback');
-    const validate = async () => 'valid';
+    const backupPath = join(directory, 'config.rollback-revision.json');
+    const validatedPaths: string[] = [];
+    const validate = async (_binary: string, configPath: string) => {
+      validatedPaths.push(configPath);
+      JSON.parse(await readFile(configPath, 'utf8'));
+      return 'valid';
+    };
     try {
       await writeFile(targetPath, JSON.stringify({ version: 'old' }));
       await applyValidatedConfig(
@@ -123,8 +141,23 @@ describe('xray-manager', () => {
 
       await restoreValidatedConfig('test-xray', targetPath, backupPath, validate);
       expect(JSON.parse(await readFile(targetPath, 'utf8'))).toEqual({ version: 'old' });
+      expect(validatedPaths).toHaveLength(2);
+      expect(validatedPaths[0]).toMatch(/config\.next-[0-9a-f-]+\.json$/);
+      expect(validatedPaths[1]).toMatch(/config\.restore-[0-9a-f-]+\.json$/);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it('keeps JSON as the final extension for every lifecycle stage', () => {
+    const configPath = join('etc', 'xray', 'config.json');
+    for (const stage of ['backup', 'next', 'restore', 'rollback', 'validation'] as const) {
+      expect(xrayConfigLifecyclePath(configPath, stage, 'revision')).toBe(
+        join('etc', 'xray', `config.${stage}-revision.json`),
+      );
+    }
+    expect(xrayConfigLifecyclePath(join('etc', 'xray', 'config'), 'next', 'revision')).toBe(
+      join('etc', 'xray', 'config.next-revision.json'),
+    );
   });
 });

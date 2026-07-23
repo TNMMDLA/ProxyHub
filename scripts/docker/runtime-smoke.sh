@@ -48,4 +48,7 @@ done
 docker compose exec -T proxyhub-server node -e \
   "fetch('http://127.0.0.1:3000/api/health').then(async response => { const body = await response.json(); if (!response.ok || body?.success !== true || body?.data?.status !== 'ok') process.exit(1); console.log(JSON.stringify(body)); }).catch(error => { console.error(error); process.exit(1); })"
 
+docker compose exec -T -w /app/apps/agent proxyhub-agent node --input-type=module \
+  < scripts/runtime/verify-xray-lifecycle.mjs
+
 echo "Production Compose runtime smoke test passed."
