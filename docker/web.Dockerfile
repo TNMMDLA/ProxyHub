@@ -7,7 +7,7 @@ COPY packages/shared/package.json packages/shared/package.json
 RUN pnpm install --filter @proxyhub/web... --frozen-lockfile
 COPY apps/web apps/web
 COPY packages/shared packages/shared
-RUN pnpm --filter @proxyhub/web build
+RUN pnpm --filter @proxyhub/web... build
 
 FROM nginx:1.29-alpine
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
