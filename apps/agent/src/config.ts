@@ -17,6 +17,12 @@ const envSchema = z
     XRAY_HEARTBEAT_PATH: z.string().default('/var/run/proxyhub/xray.heartbeat'),
     XRAY_PROBE_HOST: z.string().default('127.0.0.1'),
     XRAY_HEALTH_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(12_000),
+    REALITY_COMPATIBILITY_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(5_000)
+      .max(60_000)
+      .default(20_000),
   })
   .superRefine((environment, context) => {
     if (

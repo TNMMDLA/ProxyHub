@@ -24,6 +24,7 @@ ProxyHub is a modern, open-source proxy infrastructure management platform for L
 - Login lockout, new-IP security events, session inventory, and logout-all
 - Live controller and Agent status
 - VLESS Reality quick creation with generated UUID, X25519 keypair, Short ID, Vision flow, and client URI
+- Live Reality target preflight with isolated temporary Xray server/client processes and end-to-end HTTPS traffic proof
 - AES-256-GCM encryption for Reality private keys and TOTP secrets
 - Xray configuration test, temporary-file cleanup, revision backup, atomic apply, acknowledged restart, health check, and rollback
 - Node and node-pool CRUD with many-to-many membership
@@ -98,22 +99,23 @@ docker compose logs -f proxyhub-server proxyhub-agent xray caddy
 
 ## Environment variables
 
-| Variable                    | Required           | Default                      | Purpose                                                      |
-| --------------------------- | ------------------ | ---------------------------- | ------------------------------------------------------------ |
-| `PANEL_DOMAIN`              | Yes for public use | `localhost`                  | Caddy host and certificate name                              |
-| `WEB_ORIGIN`                | Yes for public use | `https://localhost`          | Allowed credentialed browser origin                          |
-| `ENCRYPTION_KEY`            | Yes                | none in Compose              | Encrypts TOTP and Reality secrets; use 32+ random characters |
-| `AGENT_TOKEN`               | Yes                | none in Compose              | Authenticates controller-to-Agent calls                      |
-| `DATABASE_URL`              | No                 | `file:/app/data/proxyhub.db` | Prisma SQLite database URL                                   |
-| `SESSION_TTL_HOURS`         | No                 | `24`                         | Session lifetime                                             |
-| `TRUST_PROXY`               | No                 | `true` in Compose            | Trusts Caddy forwarding headers                              |
-| `XRAY_BINARY`               | No                 | `/usr/local/bin/xray`        | Fixed Xray executable path                                   |
-| `XRAY_HEALTH_TIMEOUT_MS`    | No                 | `12000`                      | Restart acknowledgement and health-check timeout             |
-| `RULE_SET_MAX_BYTES`        | No                 | `5242880`                    | Maximum decompressed remote Rule Set response                |
-| `RULE_SET_MAX_RULES`        | No                 | `50000`                      | Maximum normalized rules per remote source                   |
-| `RULE_SET_FETCH_TIMEOUT_MS` | No                 | `10000`                      | Remote fetch timeout in milliseconds                         |
-| `RULE_SET_MAX_REDIRECTS`    | No                 | `3`                          | Maximum validated redirects                                  |
-| `RULE_SET_ALLOW_HTTP`       | No                 | `false`                      | Development-only HTTP opt-in; keep false in production       |
+| Variable                           | Required           | Default                      | Purpose                                                       |
+| ---------------------------------- | ------------------ | ---------------------------- | ------------------------------------------------------------- |
+| `PANEL_DOMAIN`                     | Yes for public use | `localhost`                  | Caddy host and certificate name                               |
+| `WEB_ORIGIN`                       | Yes for public use | `https://localhost`          | Allowed credentialed browser origin                           |
+| `ENCRYPTION_KEY`                   | Yes                | none in Compose              | Encrypts TOTP and Reality secrets; use 32+ random characters  |
+| `AGENT_TOKEN`                      | Yes                | none in Compose              | Authenticates controller-to-Agent calls                       |
+| `DATABASE_URL`                     | No                 | `file:/app/data/proxyhub.db` | Prisma SQLite database URL                                    |
+| `SESSION_TTL_HOURS`                | No                 | `24`                         | Session lifetime                                              |
+| `TRUST_PROXY`                      | No                 | `true` in Compose            | Trusts Caddy forwarding headers                               |
+| `XRAY_BINARY`                      | No                 | `/usr/local/bin/xray`        | Fixed Xray executable path                                    |
+| `XRAY_HEALTH_TIMEOUT_MS`           | No                 | `12000`                      | Restart acknowledgement and health-check timeout              |
+| `REALITY_COMPATIBILITY_TIMEOUT_MS` | No                 | `20000`                      | Global timeout for the isolated live Reality target preflight |
+| `RULE_SET_MAX_BYTES`               | No                 | `5242880`                    | Maximum decompressed remote Rule Set response                 |
+| `RULE_SET_MAX_RULES`               | No                 | `50000`                      | Maximum normalized rules per remote source                    |
+| `RULE_SET_FETCH_TIMEOUT_MS`        | No                 | `10000`                      | Remote fetch timeout in milliseconds                          |
+| `RULE_SET_MAX_REDIRECTS`           | No                 | `3`                          | Maximum validated redirects                                   |
+| `RULE_SET_ALLOW_HTTP`              | No                 | `false`                      | Development-only HTTP opt-in; keep false in production        |
 
 Never reuse `ENCRYPTION_KEY` as the Agent token. Back up the encryption key separately; encrypted secrets cannot be recovered without it.
 Production startup rejects the development defaults and the placeholder values from `.env.example`.
@@ -186,6 +188,7 @@ All responses use `{ "success": true, "data": ... }` or:
 | `POST`                   | `/api/auth/2fa/setup`                 | Generate TOTP enrollment                   |
 | `POST`                   | `/api/auth/2fa/enable`                | Verify TOTP and issue recovery codes       |
 | `GET`, `POST`            | `/api/nodes`                          | List/create Reality nodes                  |
+| `POST`                   | `/api/nodes/reality-compatibility`    | Run an isolated live Reality target test   |
 | `PATCH`, `DELETE`        | `/api/nodes/:id`                      | Update/delete a node                       |
 | `POST`                   | `/api/nodes/:id/clone`                | Clone with fresh credentials               |
 | `GET`                    | `/api/nodes/:id/share`                | VLESS URI and QR code                      |

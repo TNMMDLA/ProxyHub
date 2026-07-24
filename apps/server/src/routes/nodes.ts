@@ -1,7 +1,12 @@
 import type { Prisma } from '@prisma/client';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import QRCode from 'qrcode';
-import { createNodeSchema, updateNodeSchema } from '@proxyhub/shared';
+import {
+  createNodeSchema,
+  realityTargetCompatibilityRequestSchema,
+  updateNodeSchema,
+  type RealityTargetCompatibilityResult,
+} from '@proxyhub/shared';
 import {
   buildRealityInbound,
   buildXrayConfig,
@@ -50,6 +55,121 @@ interface LifecycleRecord {
 }
 
 let nodeLifecycleQueue = Promise.resolve();
+
+async function testRealityTarget(
+  request: FastifyRequest,
+  agentClient: AgentClient,
+  input: { serverName: string; target: string },
+  purpose: 'MANUAL' | 'NODE_CREATE' | 'NODE_UPDATE' | 'NODE_CLONE',
+): Promise<RealityTargetCompatibilityResult> {
+  const metadata = { serverName: input.serverName, target: input.target, purpose };
+  await audit(
+    request,
+    'REALITY_TARGET_COMPATIBILITY_TEST_STARTED',
+    'RealityTarget',
+    'SUCCESS',
+    undefined,
+    metadata,
+  );
+  try {
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    request.raw.once('aborted', cancel);
+    const compatibility = await agentClient
+      .testRealityTarget(input, controller.signal)
+      .finally(() => request.raw.off('aborted', cancel));
+    await audit(
+      request,
+      compatibility.status === 'COMPATIBLE'
+        ? 'REALITY_TARGET_COMPATIBILITY_TEST_PASSED'
+        : 'REALITY_TARGET_COMPATIBILITY_TEST_FAILED',
+      'RealityTarget',
+      compatibility.status === 'COMPATIBLE' ? 'SUCCESS' : 'FAILURE',
+      undefined,
+      {
+        ...metadata,
+        result: compatibility.status,
+        xrayVersion: compatibility.xrayVersion,
+        durationMs: compatibility.durationMs,
+        tlsPrecheck: compatibility.tlsPrecheck.status,
+        realityHandshake: compatibility.realityHandshake.status,
+        endToEndTraffic: compatibility.endToEndTraffic.status,
+      },
+    );
+    return compatibility;
+  } catch (error) {
+    const code = error instanceof AppError ? error.code : 'REALITY_TARGET_TEST_INTERNAL_ERROR';
+    const expectedRejection = [
+      'REALITY_TARGET_INVALID',
+      'REALITY_TARGET_DNS_FAILED',
+      'REALITY_TARGET_BLOCKED_ADDRESS',
+      'REALITY_TARGET_TEST_BUSY',
+      'REALITY_TARGET_TEST_CANCELLED',
+    ].includes(code);
+    const records: Promise<unknown>[] = [
+      audit(
+        request,
+        'REALITY_TARGET_COMPATIBILITY_TEST_FAILED',
+        'RealityTarget',
+        'FAILURE',
+        undefined,
+        { ...metadata, errorType: code },
+      ),
+    ];
+    if (!expectedRejection) {
+      records.push(
+        prisma.notification.create({
+          data: {
+            level: 'CRITICAL',
+            title: 'Reality compatibility test failed',
+            message: `The ${purpose.toLowerCase().replaceAll('_', ' ')} preflight could not complete safely.`,
+            eventType: 'REALITY_TARGET_TEST_ERROR',
+          },
+        }),
+      );
+    }
+    await Promise.allSettled(records);
+    throw error;
+  }
+}
+
+async function requireCompatibleRealityTarget(
+  request: FastifyRequest,
+  agentClient: AgentClient,
+  input: { serverName: string; target: string },
+  purpose: 'NODE_CREATE' | 'NODE_UPDATE' | 'NODE_CLONE',
+): Promise<void> {
+  const compatibility = await testRealityTarget(request, agentClient, input, purpose);
+  if (compatibility.status === 'COMPATIBLE') return;
+  await Promise.allSettled([
+    audit(request, purpose, 'Node', 'FAILURE', undefined, {
+      errorType: 'REALITY_TARGET_INCOMPATIBLE',
+      serverName: compatibility.serverName,
+      target: compatibility.target,
+      xrayVersion: compatibility.xrayVersion,
+      failureStage:
+        compatibility.tlsPrecheck.status === 'FAILED'
+          ? 'TLS_PRECHECK'
+          : compatibility.realityHandshake.status === 'FAILED'
+            ? 'REALITY_HANDSHAKE'
+            : 'END_TO_END_TRAFFIC',
+    }),
+    prisma.notification.create({
+      data: {
+        level: 'WARNING',
+        title: 'Reality target is incompatible',
+        message: `${compatibility.serverName} / ${compatibility.target} did not pass the live Reality preflight. No node changes were applied.`,
+        eventType: 'REALITY_TARGET_INCOMPATIBLE',
+      },
+    }),
+  ]);
+  throw new AppError(
+    'REALITY_TARGET_INCOMPATIBLE',
+    'The Reality target did not pass the live compatibility preflight',
+    422,
+    compatibility,
+  );
+}
 
 async function enabledXrayConfig(transaction: Prisma.TransactionClient) {
   const nodes = await transaction.node.findMany({
@@ -187,8 +307,24 @@ export const nodeRoutes: FastifyPluginAsync<{ agentClient: AgentClient }> = asyn
     data: await prisma.node.findMany({ select: nodeSelect, orderBy: { createdAt: 'desc' } }),
   }));
 
+  app.post(
+    '/reality-compatibility',
+    { preHandler: requireRole('ADMIN', 'OPERATOR') },
+    async (request) => {
+      const input = realityTargetCompatibilityRequestSchema.parse(request.body);
+      const compatibility = await testRealityTarget(request, options.agentClient, input, 'MANUAL');
+      return { success: true, data: compatibility };
+    },
+  );
+
   app.post('/', { preHandler: requireRole('ADMIN', 'OPERATOR') }, async (request, reply) => {
     const input = createNodeSchema.parse(request.body);
+    await requireCompatibleRealityTarget(
+      request,
+      options.agentClient,
+      { serverName: input.sni, target: input.dest },
+      'NODE_CREATE',
+    );
     const credentials = generateRealityCredentials();
     buildRealityInbound({
       name: input.name,
@@ -238,6 +374,20 @@ export const nodeRoutes: FastifyPluginAsync<{ agentClient: AgentClient }> = asyn
   app.patch('/:id', { preHandler: requireRole('ADMIN', 'OPERATOR') }, async (request) => {
     const id = (request.params as { id: string }).id;
     const input = updateNodeSchema.parse(request.body);
+    if (input.sni !== undefined || input.dest !== undefined) {
+      const current = await prisma.node.findUnique({ where: { id } });
+      if (!current) throw new AppError('NODE_NOT_FOUND', 'Node not found', 404);
+      const serverName = input.sni ?? current.sni;
+      const target = input.dest ?? current.dest;
+      if (serverName !== current.sni || target !== current.dest) {
+        await requireCompatibleRealityTarget(
+          request,
+          options.agentClient,
+          { serverName, target },
+          'NODE_UPDATE',
+        );
+      }
+    }
     const node = await synchronizeNodeMutation({
       request,
       agentClient: options.agentClient,
@@ -282,6 +432,14 @@ export const nodeRoutes: FastifyPluginAsync<{ agentClient: AgentClient }> = asyn
     { preHandler: requireRole('ADMIN', 'OPERATOR') },
     async (request, reply) => {
       const id = (request.params as { id: string }).id;
+      const source = await prisma.node.findUnique({ where: { id } });
+      if (!source) throw new AppError('NODE_NOT_FOUND', 'Node not found', 404);
+      await requireCompatibleRealityTarget(
+        request,
+        options.agentClient,
+        { serverName: source.sni, target: source.dest },
+        'NODE_CLONE',
+      );
       const credentials = generateRealityCredentials();
       const node = await synchronizeNodeMutation({
         request,

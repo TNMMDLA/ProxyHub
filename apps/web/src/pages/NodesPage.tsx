@@ -9,10 +9,12 @@ import {
   PowerOff,
   QrCode,
   RadioTower,
+  ShieldCheck,
   Trash2,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import type { RealityTargetCompatibilityResult } from '@proxyhub/shared';
 import { api } from '../api';
 import {
   Button,
@@ -24,16 +26,12 @@ import {
   Status,
 } from '../components/ui';
 import type { NodeRecord, ServerRecord } from '../types';
-
-const initialForm = {
-  name: '',
-  serverId: '',
-  host: '',
-  port: 443,
-  sni: 'www.microsoft.com',
-  dest: 'www.microsoft.com:443',
-  fingerprint: 'chrome',
-};
+import { RealityCompatibilityPanel } from './RealityCompatibilityPanel';
+import {
+  clearCompatibilityOnRealityChange,
+  initialForm,
+  type CompatibilityView,
+} from './reality-compatibility-state';
 
 export default function NodesPage() {
   const client = useQueryClient();
@@ -41,6 +39,8 @@ export default function NodesPage() {
   const [createOpen, setCreateOpen] = useState(params.get('create') === '1');
   const [share, setShare] = useState<{ uri: string; qrCode: string } | null>(null);
   const [form, setForm] = useState(initialForm);
+  const [createCompatibility, setCreateCompatibility] = useState<CompatibilityView>(null);
+  const [editCompatibility, setEditCompatibility] = useState<CompatibilityView>(null);
   const [editing, setEditing] = useState<
     Pick<NodeRecord, 'id' | 'name' | 'host' | 'port' | 'sni' | 'dest' | 'fingerprint'> | undefined
   >();
@@ -52,12 +52,32 @@ export default function NodesPage() {
   const openCreate = () => {
     const server = servers.data?.[0];
     setForm((value) => (server ? { ...value, serverId: server.id, host: server.ip } : value));
+    setCreateCompatibility(null);
     setCreateOpen(true);
   };
   const closeCreate = () => {
     setCreateOpen(false);
+    setCreateCompatibility(null);
     setParams({});
   };
+  const createCompatibilityTest = useMutation({
+    mutationFn: () =>
+      api<RealityTargetCompatibilityResult>('/nodes/reality-compatibility', {
+        method: 'POST',
+        body: JSON.stringify({ serverName: form.sni, target: form.dest }),
+      }),
+    onSuccess: setCreateCompatibility,
+    onError: (error) => setCreateCompatibility({ status: 'ERROR', message: error.message }),
+  });
+  const editCompatibilityTest = useMutation({
+    mutationFn: (node: NonNullable<typeof editing>) =>
+      api<RealityTargetCompatibilityResult>('/nodes/reality-compatibility', {
+        method: 'POST',
+        body: JSON.stringify({ serverName: node.sni, target: node.dest }),
+      }),
+    onSuccess: setEditCompatibility,
+    onError: (error) => setEditCompatibility({ status: 'ERROR', message: error.message }),
+  });
   const create = useMutation({
     mutationFn: () => {
       const serverId = form.serverId || servers.data?.[0]?.id || '';
@@ -204,7 +224,8 @@ export default function NodesPage() {
                         </button>
                         <button
                           title="Edit"
-                          onClick={() =>
+                          onClick={() => {
+                            setEditCompatibility(null);
                             setEditing({
                               id: node.id,
                               name: node.name,
@@ -213,8 +234,8 @@ export default function NodesPage() {
                               sni: node.sni,
                               dest: node.dest,
                               fingerprint: node.fingerprint,
-                            })
-                          }
+                            });
+                          }}
                         >
                           <Pencil size={16} />
                         </button>
@@ -313,16 +334,39 @@ export default function NodesPage() {
               <Input
                 label="SNI"
                 value={form.sni}
-                onChange={(e) => setForm({ ...form, sni: e.target.value })}
+                onChange={(event) => {
+                  const next = clearCompatibilityOnRealityChange(form, 'sni', event.target.value);
+                  setForm(next.form);
+                  setCreateCompatibility(next.compatibility);
+                }}
                 required
               />
               <Input
-                label="Destination"
+                label="Reality target"
                 value={form.dest}
-                onChange={(e) => setForm({ ...form, dest: e.target.value })}
+                onChange={(event) => {
+                  const next = clearCompatibilityOnRealityChange(form, 'dest', event.target.value);
+                  setForm(next.form);
+                  setCreateCompatibility(next.compatibility);
+                }}
                 required
               />
             </div>
+            <div className="compatibility-action">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={createCompatibilityTest.isPending}
+                onClick={() => createCompatibilityTest.mutate()}
+              >
+                <ShieldCheck size={16} />
+                {createCompatibilityTest.isPending
+                  ? 'Testing live Reality tunnel…'
+                  : 'Test Reality compatibility'}
+              </Button>
+              <small>The backend runs this live preflight again when the node is created.</small>
+            </div>
+            <RealityCompatibilityPanel result={createCompatibility} />
             <div className="generated-note">
               <b>Generated on save</b>
               <span>UUID · X25519 keypair · Short ID · xtls-rprx-vision flow</span>
@@ -397,13 +441,29 @@ export default function NodesPage() {
               <Input
                 label="SNI"
                 value={editing.sni}
-                onChange={(event) => setEditing({ ...editing, sni: event.target.value })}
+                onChange={(event) => {
+                  const next = clearCompatibilityOnRealityChange(
+                    editing,
+                    'sni',
+                    event.target.value,
+                  );
+                  setEditing(next.form);
+                  setEditCompatibility(next.compatibility);
+                }}
                 required
               />
               <Input
-                label="Destination"
+                label="Reality target"
                 value={editing.dest}
-                onChange={(event) => setEditing({ ...editing, dest: event.target.value })}
+                onChange={(event) => {
+                  const next = clearCompatibilityOnRealityChange(
+                    editing,
+                    'dest',
+                    event.target.value,
+                  );
+                  setEditing(next.form);
+                  setEditCompatibility(next.compatibility);
+                }}
                 required
               />
               <Input
@@ -413,6 +473,21 @@ export default function NodesPage() {
                 required
               />
             </div>
+            <div className="compatibility-action">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={editCompatibilityTest.isPending}
+                onClick={() => editCompatibilityTest.mutate(editing)}
+              >
+                <ShieldCheck size={16} />
+                {editCompatibilityTest.isPending
+                  ? 'Testing live Reality tunnel…'
+                  : 'Test Reality compatibility'}
+              </Button>
+              <small>Saving SNI or target changes always triggers a fresh backend preflight.</small>
+            </div>
+            <RealityCompatibilityPanel result={editCompatibility} />
             <div className="modal-actions">
               <Button type="button" variant="secondary" onClick={() => setEditing(undefined)}>
                 Cancel

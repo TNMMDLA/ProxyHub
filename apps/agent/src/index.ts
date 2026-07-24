@@ -15,6 +15,10 @@ import {
   XrayLifecycleError,
   xrayRollbackPath,
 } from './xray-lifecycle.js';
+import {
+  RealityCompatibilityError,
+  RealityTargetCompatibilityService,
+} from './reality-target-compatibility.js';
 
 const env = parseAgentConfig(process.env);
 
@@ -23,6 +27,11 @@ const app = Fastify({
     level: process.env.NODE_ENV === 'test' ? 'silent' : 'info',
     redact: ['req.headers.authorization'],
   },
+});
+
+const realityCompatibility = new RealityTargetCompatibilityService({
+  binary: env.XRAY_BINARY,
+  timeoutMs: env.REALITY_COMPATIBILITY_TIMEOUT_MS,
 });
 
 let xrayOperation = Promise.resolve();
@@ -93,6 +102,24 @@ app.post('/xray/validate', async (request) => {
   }
 });
 
+app.post('/xray/reality-compatibility', async (request) => {
+  const body = z
+    .object({
+      serverName: z.string().trim().min(1).max(253),
+      target: z.string().trim().min(3).max(300),
+    })
+    .parse(request.body);
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  request.raw.once('aborted', cancel);
+  try {
+    const result = await realityCompatibility.test(body, controller.signal);
+    return { success: true, data: result };
+  } finally {
+    request.raw.off('aborted', cancel);
+  }
+});
+
 app.post('/xray/apply', async (request) => {
   const body = z.object({ config: z.record(z.string(), z.unknown()) }).parse(request.body);
   return withXrayLock(async () => {
@@ -146,8 +173,24 @@ app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
   const message = error instanceof Error ? error.message : 'Agent operation failed';
   const operationError = error instanceof XrayLifecycleError;
-  const code = operationError ? error.code : 'AGENT_OPERATION_FAILED';
-  return reply.code(operationError ? 500 : 400).send({
+  const compatibilityError = error instanceof RealityCompatibilityError;
+  const code = operationError || compatibilityError ? error.code : 'AGENT_OPERATION_FAILED';
+  const statusCode = operationError
+    ? 500
+    : compatibilityError
+      ? error.code === 'REALITY_TARGET_TEST_TIMEOUT'
+        ? 504
+        : error.code === 'REALITY_TARGET_TEST_CANCELLED'
+          ? 499
+          : error.code === 'REALITY_TARGET_TEST_BUSY'
+            ? 409
+            : error.code === 'REALITY_TARGET_INVALID' ||
+                error.code === 'REALITY_TARGET_DNS_FAILED' ||
+                error.code === 'REALITY_TARGET_BLOCKED_ADDRESS'
+              ? 422
+              : 500
+      : 400;
+  return reply.code(statusCode).send({
     success: false,
     error: { code, message },
   });

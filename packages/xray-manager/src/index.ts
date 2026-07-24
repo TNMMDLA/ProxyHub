@@ -4,6 +4,13 @@ import { access, copyFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import { join, parse } from 'node:path';
 import { spawn } from 'node:child_process';
+export {
+  isBlockedAddress,
+  systemResolver,
+  type ResolvedAddress,
+  type ResolveHostname,
+} from './network-safety.js';
+export { buildRealityCompatibilityConfigs } from './reality-compatibility-config.js';
 
 export interface RealityCredentials {
   uuid: string;

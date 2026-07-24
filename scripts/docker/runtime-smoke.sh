@@ -51,4 +51,14 @@ docker compose exec -T proxyhub-server node -e \
 docker compose exec -T -w /app/apps/agent proxyhub-agent node --input-type=module \
   < scripts/runtime/verify-xray-lifecycle.mjs
 
+for service in "${services[@]}"; do
+  container_id="$(docker compose ps -q --all "$service")"
+  state="$(docker inspect --format '{{.State.Status}}' "$container_id")"
+  restart_count="$(docker inspect --format '{{.RestartCount}}' "$container_id")"
+  if [[ "$state" != "running" || "$restart_count" != "0" ]]; then
+    echo "$service changed state during Reality compatibility smoke: state=$state restarts=$restart_count" >&2
+    exit 1
+  fi
+done
+
 echo "Production Compose runtime smoke test passed."

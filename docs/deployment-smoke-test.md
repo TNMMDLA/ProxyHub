@@ -126,10 +126,14 @@ Open **Servers** and verify the unified status is `HEALTHY`. Its checks must sho
 
 ## 8. Node create and full configuration lifecycle
 
-1. Create a VLESS Reality node using `$REALITY_HOST` and `$REALITY_PORT`.
-2. Confirm the UI reports successful synchronization, not only database creation.
-3. Confirm UUID, X25519 public key, Short ID, Vision flow, share URI, and QR code exist.
-4. Confirm no private key appears in API responses, notifications, or logs.
+1. Leave the recommended new-node SNI and target at `dl.google.com` / `dl.google.com:443`, or enter the target being evaluated. This is a recommendation, not a compatibility guarantee.
+2. Click **Test Reality compatibility** and confirm TLS precheck, Reality handshake, and end-to-end traffic are displayed as separate stages.
+3. Confirm changing SNI or Target clears the previous result.
+4. Create a VLESS Reality node using `$REALITY_HOST` and `$REALITY_PORT`. The backend must repeat the live preflight before database mutation.
+5. Confirm the UI reports successful synchronization, not only database creation.
+6. Confirm UUID, X25519 public key, Short ID, Vision flow, share URI, and QR code exist.
+7. Confirm no private key appears in API responses, notifications, or logs.
+8. Confirm the compatibility test did not change `/etc/xray/config.json`, restart the formal Xray container, expose a temporary port publicly, or leave temporary config files/processes.
 
 ```bash
 docker compose exec xray xray run -test -config /etc/xray/config.json

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import type { XrayHealthStatus } from '@proxyhub/shared';
+import type { RealityTargetCompatibilityResult, XrayHealthStatus } from '@proxyhub/shared';
 import type { AgentClient } from './agent-client.js';
 import { prisma } from './db.js';
 import { buildApp } from './app.js';
@@ -24,13 +24,37 @@ const healthyXray: XrayHealthStatus = {
 
 let rejectNextApply = false;
 let applyCalls = 0;
+let compatibilityCalls = 0;
+let nextCompatibilityStatus: RealityTargetCompatibilityResult['status'] = 'COMPATIBLE';
 const appliedInboundCounts: number[] = [];
+const compatibilityResult = (
+  status: RealityTargetCompatibilityResult['status'],
+): RealityTargetCompatibilityResult => ({
+  status,
+  target: status === 'COMPATIBLE' ? 'dl.google.com:443' : 'incompatible.example:443',
+  serverName: status === 'COMPATIBLE' ? 'dl.google.com' : 'incompatible.example',
+  xrayVersion: 'Xray 26.5.9',
+  durationMs: 125,
+  tlsPrecheck: { status: 'PASSED' },
+  realityHandshake: { status: status === 'COMPATIBLE' ? 'PASSED' : 'FAILED' },
+  endToEndTraffic: { status: status === 'COMPATIBLE' ? 'PASSED' : 'NOT_RUN' },
+  diagnostics:
+    status === 'COMPATIBLE'
+      ? []
+      : ['TLS precheck passed, but the end-to-end Reality handshake failed.'],
+});
 const agentClient: AgentClient = {
   status: async () => ({
     agent: { version: '0.1.1', hostname: 'agent-test', uptime: 100 },
     system: { cpuCount: 2, load: 0.1, memoryUsage: 20 },
     xray: healthyXray,
   }),
+  testRealityTarget: async () => {
+    compatibilityCalls += 1;
+    const status = nextCompatibilityStatus;
+    nextCompatibilityStatus = 'COMPATIBLE';
+    return compatibilityResult(status);
+  },
   applyConfig: async (config) => {
     applyCalls += 1;
     appliedInboundCounts.push(Array.isArray(config.inbounds) ? config.inbounds.length : -1);
@@ -817,6 +841,101 @@ describe('ProxyHub foundation API', () => {
       .join('\n');
     expect(notificationContent).not.toContain(subscriptionToken);
     expect(notificationContent).not.toContain(originalToken);
+  });
+
+  it('tests Reality targets explicitly and distinguishes TLS from Reality failure', async () => {
+    nextCompatibilityStatus = 'INCOMPATIBLE';
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/nodes/reality-compatibility',
+      headers: { cookie },
+      payload: {
+        serverName: 'incompatible.example',
+        target: 'incompatible.example:443',
+      },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().data).toMatchObject({
+      status: 'INCOMPATIBLE',
+      tlsPrecheck: { status: 'PASSED' },
+      realityHandshake: { status: 'FAILED' },
+      endToEndTraffic: { status: 'NOT_RUN' },
+    });
+    await expect(
+      prisma.auditLog.findFirstOrThrow({
+        where: { action: 'REALITY_TARGET_COMPATIBILITY_TEST_FAILED', result: 'FAILURE' },
+      }),
+    ).resolves.toBeTruthy();
+  });
+
+  it('blocks an incompatible Node create before database or Xray mutation', async () => {
+    const [countBefore, notificationsBefore] = await Promise.all([
+      prisma.node.count(),
+      prisma.notification.count(),
+    ]);
+    const applyCallsBefore = applyCalls;
+    nextCompatibilityStatus = 'INCOMPATIBLE';
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/nodes',
+      headers: { cookie },
+      payload: {
+        name: 'Incompatible Reality Edge',
+        serverId,
+        host: 'edge.example.com',
+        port: 9443,
+        sni: 'incompatible.example',
+        dest: 'incompatible.example:443',
+        fingerprint: 'chrome',
+      },
+    });
+    expect(response.statusCode, response.body).toBe(422);
+    expect(response.json().error.code).toBe('REALITY_TARGET_INCOMPATIBLE');
+    expect(await prisma.node.count()).toBe(countBefore);
+    expect(applyCalls).toBe(applyCallsBefore);
+    expect(await prisma.notification.count()).toBe(notificationsBefore + 1);
+    await expect(
+      prisma.notification.findFirstOrThrow({
+        where: { eventType: 'REALITY_TARGET_INCOMPATIBLE', level: 'WARNING' },
+      }),
+    ).resolves.toBeTruthy();
+  });
+
+  it('preflights only Reality target changes and preserves the old node when incompatible', async () => {
+    const current = await prisma.node.findFirstOrThrow();
+    const compatibilityCallsBefore = compatibilityCalls;
+    const renamed = await app.inject({
+      method: 'PATCH',
+      url: `/api/nodes/${current.id}`,
+      headers: { cookie },
+      payload: { name: 'Name-only Update' },
+    });
+    expect(renamed.statusCode, renamed.body).toBe(200);
+    expect(compatibilityCalls).toBe(compatibilityCallsBefore);
+
+    const applyCallsBefore = applyCalls;
+    nextCompatibilityStatus = 'INCOMPATIBLE';
+    const rejectedTarget = await app.inject({
+      method: 'PATCH',
+      url: `/api/nodes/${current.id}`,
+      headers: { cookie },
+      payload: { dest: 'incompatible.example:443' },
+    });
+    expect(rejectedTarget.statusCode, rejectedTarget.body).toBe(422);
+    expect(compatibilityCalls).toBe(compatibilityCallsBefore + 1);
+    expect(applyCalls).toBe(applyCallsBefore);
+    expect((await prisma.node.findUniqueOrThrow({ where: { id: current.id } })).dest).toBe(
+      current.dest,
+    );
+
+    const compatibleSni = await app.inject({
+      method: 'PATCH',
+      url: `/api/nodes/${current.id}`,
+      headers: { cookie },
+      payload: { sni: 'dl.google.com' },
+    });
+    expect(compatibleSni.statusCode, compatibleSni.body).toBe(200);
+    expect(compatibilityCalls).toBe(compatibilityCallsBefore + 2);
   });
 
   it('rolls back the database and records a critical event when Xray rejects a change', async () => {

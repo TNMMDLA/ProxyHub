@@ -1474,6 +1474,68 @@ tbody tr:hover {
   margin-top: 4px;
   color: var(--muted);
 }
+.compatibility-action {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.compatibility-action small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.reality-compatibility {
+  margin-top: 12px;
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  font-size: 11px;
+}
+.reality-compatibility header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.reality-compatibility header span,
+.reality-compatibility > span,
+.reality-compatibility small {
+  color: var(--muted);
+}
+.reality-compatibility.is-compatible {
+  border-color: #a7dfc1;
+  background: #f1fbf5;
+}
+.reality-compatibility.is-compatible b {
+  color: #16794a;
+}
+.reality-compatibility.is-incompatible,
+.reality-compatibility.is-error {
+  border-color: #f2b8b5;
+  background: #fff6f5;
+}
+.reality-compatibility.is-incompatible b,
+.reality-compatibility.is-error b {
+  color: var(--red);
+}
+.compatibility-stages {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+.compatibility-stages span {
+  padding: 7px 8px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  line-height: 1.35;
+}
 .modal-actions {
   margin-top: 22px;
   display: flex;
@@ -2376,6 +2438,20 @@ tbody tr:hover {
     border-bottom: 0;
   }
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .compatibility-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .compatibility-action .button {
+    width: 100%;
+  }
+  .reality-compatibility header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .compatibility-stages {
     grid-template-columns: 1fr;
   }
   .pool-list article {

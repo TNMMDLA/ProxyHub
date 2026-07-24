@@ -17,13 +17,32 @@ export const createNodeSchema = z.object({
   host: z.string().trim().min(1).max(253),
   port: z.number().int().min(1).max(65535),
   sni: z.string().trim().min(1).max(253),
-  dest: z.string().trim().min(1).max(300).default('www.microsoft.com:443'),
+  dest: z.string().trim().min(1).max(300).default('dl.google.com:443'),
   fingerprint: z.string().trim().default('chrome'),
 });
 
 export const updateNodeSchema = createNodeSchema.omit({ serverId: true }).partial().extend({
   enabled: z.boolean().optional(),
 });
+
+export const realityTargetCompatibilityRequestSchema = z.object({
+  serverName: z.string().trim().min(1).max(253),
+  target: z.string().trim().min(3).max(300),
+});
+
+export type RealityCompatibilityStageStatus = 'PASSED' | 'FAILED' | 'NOT_RUN';
+
+export interface RealityTargetCompatibilityResult {
+  status: 'COMPATIBLE' | 'INCOMPATIBLE';
+  target: string;
+  serverName: string;
+  xrayVersion: string;
+  durationMs: number;
+  tlsPrecheck: { status: RealityCompatibilityStageStatus };
+  realityHandshake: { status: RealityCompatibilityStageStatus };
+  endToEndTraffic: { status: RealityCompatibilityStageStatus };
+  diagnostics: string[];
+}
 
 export const createPoolSchema = z.object({
   name: z.string().trim().min(2).max(80),
