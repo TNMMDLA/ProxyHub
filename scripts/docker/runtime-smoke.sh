@@ -104,8 +104,16 @@ if (!authentication.ok) {
 }
 const cookie = authentication.headers.get('set-cookie')?.split(';')[0];
 if (!cookie) throw new Error('Diagnostics fixture authentication did not issue a session cookie');
+const diagnosticClientIp = `192.0.2.${((Date.now() + process.pid) % 254) + 1}`;
 const authenticated = (path, init = {}) =>
-  fetch(`${base}${path}`, { ...init, headers: { cookie, ...(init.headers ?? {}) } });
+  fetch(`${base}${path}`, {
+    ...init,
+    headers: {
+      cookie,
+      'x-forwarded-for': diagnosticClientIp,
+      ...(init.headers ?? {}),
+    },
+  });
 const overview = await authenticated('/api/diagnostics/overview');
 const overviewBody = await overview.json();
 if (!overview.ok || !overviewBody?.success || overviewBody.data?.kind !== 'overview') {
