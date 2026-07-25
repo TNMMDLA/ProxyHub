@@ -83,14 +83,27 @@ tar -czf backups/proxyhub-backup-20260101T000000Z-000000000000.tar.gz \
 
 docker compose exec -T proxyhub-server node --input-type=module <<'EOF'
 const base = 'http://127.0.0.1:3000';
-const bootstrap = await fetch(`${base}/api/auth/bootstrap`, {
+const credentials = {
+  username: 'runtime-admin',
+  password: 'runtime-smoke-password-123',
+};
+let authentication = await fetch(`${base}/api/auth/bootstrap`, {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ username: 'runtime-admin', password: 'runtime-smoke-password-123' }),
+  body: JSON.stringify(credentials),
 });
-if (!bootstrap.ok) throw new Error(`Diagnostics bootstrap failed: ${bootstrap.status}`);
-const cookie = bootstrap.headers.get('set-cookie')?.split(';')[0];
-if (!cookie) throw new Error('Diagnostics bootstrap did not issue a session cookie');
+if (authentication.status === 409) {
+  authentication = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(credentials),
+  });
+}
+if (!authentication.ok) {
+  throw new Error(`Diagnostics fixture authentication failed: ${authentication.status}`);
+}
+const cookie = authentication.headers.get('set-cookie')?.split(';')[0];
+if (!cookie) throw new Error('Diagnostics fixture authentication did not issue a session cookie');
 const authenticated = (path, init = {}) =>
   fetch(`${base}${path}`, { ...init, headers: { cookie, ...(init.headers ?? {}) } });
 const overview = await authenticated('/api/diagnostics/overview');
