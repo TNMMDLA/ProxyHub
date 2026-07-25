@@ -140,7 +140,8 @@ ops_release_state_commit() {
       }' "$manifest"
   )"
   ops_json_write "$OPS_CURRENT_STATE" "$content"
-  local history="$OPS_RELEASE_HISTORY/$(jq -r '.releaseId' "$manifest").json"
+  local history
+  history="$OPS_RELEASE_HISTORY/$(jq -r '.releaseId' "$manifest").json"
   if [[ -e "$history" ]]; then
     [[ "$(jq -r '.releaseId' "$history")" == "$(jq -r '.releaseId' "$manifest")" ]] ||
       ops_die OPS_RELEASE_HISTORY_INVALID "Immutable release history is inconsistent"

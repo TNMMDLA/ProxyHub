@@ -327,7 +327,7 @@ jobs:
       - name: Capture isolated diagnostics
         if: always()
         run: |
-          docker compose ps --all
+          docker compose ps --all || true
           docker compose logs --no-color --tail=300 || true
           find .tmp -maxdepth 4 -type f -print 2>/dev/null || true
       - name: Remove isolated runtime

@@ -246,7 +246,7 @@ else
 fi
 
 panel_domain="$(sed -n 's/^PANEL_DOMAIN=//p' "$PROXYHUB_ENV_FILE" 2>/dev/null | head -n1)"
-if [[ "$panel_domain" =~ ^([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]; then
+if [[ "$panel_domain" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]; then
   pass domain "Panel domain syntax is valid"
 else
   fail domain "PANEL_DOMAIN has invalid syntax"

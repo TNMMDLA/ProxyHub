@@ -4,7 +4,8 @@ if [[ -n "${PROXYHUB_OPS_COMMON_LOADED:-}" ]]; then
   return 0
 fi
 readonly PROXYHUB_OPS_COMMON_LOADED=1
-readonly OPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+OPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+readonly OPS_ROOT
 
 : "${PROXYHUB_STATE_DIR:=$OPS_ROOT/.proxyhub/state}"
 : "${PROXYHUB_BACKUP_DIR:=$OPS_ROOT/backups}"
