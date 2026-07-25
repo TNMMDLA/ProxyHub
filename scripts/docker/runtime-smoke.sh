@@ -125,7 +125,28 @@ if (!exported.ok || !exportedBody?.success || exportedBody.data?.kind !== 'expor
   throw new Error('Diagnostics export failed');
 }
 const serialized = JSON.stringify(exportedBody);
-if (/(authorization|cookie|password|privateKey|database_url|\/app\/|\/var\/)/i.test(serialized)) {
+const sensitiveKey =
+  /(authorization|cookie|token|secret|password|private.?key|uuid|short.?id|database_url)/i;
+const hasUnredactedSensitiveKey = (value, key = '') => {
+  if (sensitiveKey.test(key)) return value !== '[REDACTED]';
+  if (Array.isArray(value)) return value.some((entry) => hasUnredactedSensitiveKey(entry));
+  if (value && typeof value === 'object') {
+    return Object.entries(value).some(([entryKey, entry]) =>
+      hasUnredactedSensitiveKey(entry, entryKey),
+    );
+  }
+  return false;
+};
+const forbiddenValues = [
+  process.env.AGENT_TOKEN,
+  process.env.ENCRYPTION_KEY,
+  'runtime-smoke-password-123',
+].filter(Boolean);
+if (
+  hasUnredactedSensitiveKey(exportedBody) ||
+  forbiddenValues.some((value) => serialized.includes(value)) ||
+  /(?:[a-z]:\\|\/(?:app|opt|home|root|run|etc|var|tmp)\/)/i.test(serialized)
+) {
   throw new Error('Diagnostics export contains a forbidden secret or absolute path');
 }
 console.log(`Diagnostics runtime smoke passed with ${overviewBody.data.items.length} overview items.`);
