@@ -1,10 +1,10 @@
 # ProxyHub
 
-ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.3 adds reusable manual and remotely refreshed Rule Sets to the client-independent Policy Studio and secure subscription compiler.
+ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.3.1 stabilization adds an immutable release identity and the first release, deployment, update, rollback, and consistent-backup operations foundation.
 
 ![ProxyHub dashboard design](docs/design/proxyhub-dashboard-concept.png)
 
-> Status: **V0.3 Development / Pre-production**. Rule Set parsing, SSRF protection, Last Known Good caching, deterministic compiler expansion, migration upgrades, and fixed-version client-core checks are automated. **Linux Production Smoke Test Pending**; passing CI does not constitute production acceptance.
+> Status: **V0.3.1 Phase 1 Development / Pre-production**. Release/operations code and isolated CI validation do not constitute production acceptance. **Reality Target Compatibility Hotfix VPS Verification Pending** and **V0.3.1 Phase 1 VPS Deployment Pending**.
 
 ### V0.1.1 implementation notes
 
@@ -38,6 +38,9 @@ ProxyHub is a modern, open-source proxy infrastructure management platform for L
 - Light/dark themes, command palette, responsive navigation, tables, dialogs, and QR sharing
 - SQLite through Prisma migrations, with a schema designed for later PostgreSQL migration
 - Docker Compose deployment with Caddy automatic HTTPS
+- Canonical build identity, schema-validated release manifests, digest-pinned GHCR images, and OCI labels
+- Linux preflight/health/deploy/update/rollback operations with a global lock and atomic transaction state
+- WAL-safe SQLite backup create/list/verify/prune with integrity checks and conservative retention
 
 ## Architecture
 
@@ -62,11 +65,12 @@ The controller never accepts arbitrary shell commands. System actions are fixed 
 
 ## Requirements
 
-For Docker deployment:
+For production image deployment:
 
 - Linux VPS
 - Docker Engine 24+
 - Docker Compose v2
+- `git`, `curl`, `jq`, `sqlite3`, `tar`, `gzip`, `sha256sum`, and `flock`
 - A DNS record pointing to the VPS for public HTTPS (or `localhost` for local evaluation)
 
 For development:
@@ -75,6 +79,17 @@ For development:
 - pnpm 11+
 
 ## Docker deployment
+
+Production deployments should use a CI-generated, digest-pinned release manifest:
+
+```bash
+cp .env.example .env
+# Replace ENCRYPTION_KEY and AGENT_TOKEN; set PANEL_DOMAIN and WEB_ORIGIN.
+scripts/ops/preflight.sh --manifest /path/to/release-manifest.json
+scripts/ops/deploy.sh --manifest /path/to/release-manifest.json --yes
+```
+
+The source-build workflow remains available for local evaluation:
 
 ```bash
 git clone <your-repository-url> proxyhub
@@ -153,11 +168,14 @@ pnpm test:compat
 pnpm test:migration
 pnpm test:rulesets
 pnpm test:runtime-packages
+pnpm test:manifest
+pnpm test:ops
+pnpm lint:shell
 # Windows: download, checksum, and validate with the pinned official client cores
 pnpm compat:validate:windows
 ```
 
-The integration suite creates isolated SQLite databases, tests fresh, V0.1.1, and populated V0.2.1-to-V0.3 upgrades, and covers administrator security, Xray rollback, policies, Rule Set CRUD/import/cache/SSRF/LKG/concurrency, deterministic compilation, subscriptions, notifications, and audit logs. The runtime package regression asserts that every Server workspace dependency resolves to compiled `dist/index.js`, never TypeScript under `src`. GitHub Actions additionally builds every Compose image, starts Xray, Agent, and Server, verifies all three are healthy with zero restarts, calls `/api/health`, and validates Rule Set-expanded configurations with checksum-pinned official Mihomo and sing-box CLI releases.
+The integration suite creates isolated SQLite databases, tests fresh, V0.1.1, and populated V0.2.1-to-V0.3 upgrades, and covers administrator security, Xray rollback, policies, Rule Set CRUD/import/cache/SSRF/LKG/concurrency, deterministic compilation, subscriptions, notifications, and audit logs. The runtime package regression asserts that every Server workspace dependency resolves to compiled `dist/index.js`, never TypeScript under `src`. GitHub Actions additionally builds immutable images, starts Web, Server, Agent, Xray, and Caddy, requires health with zero restarts, validates build metadata and SQLite, creates/verifies a backup, exercises dry-run operations, and simulates a failed update in an isolated Compose project.
 
 The complete Linux deployment acceptance procedure is in [docs/deployment-smoke-test.md](docs/deployment-smoke-test.md).
 
@@ -247,6 +265,8 @@ packages/
   policy-core/         Normalizer, validator, capability matrix, and client adapters
   rule-set-core/       Source parsers, normalization, deduplication, hashing, Golden tests
 docker/                Images, Caddy, nginx, Xray supervisor
+release/               Canonical version and release manifest schema
+scripts/ops/           Linux deployment/update/rollback/backup operations
 docs/design/           Accepted visual design reference
 ```
 
@@ -271,10 +291,19 @@ docs/design/           Accepted visual design reference
 - [Rule Set lifecycle and formats](docs/rule-sets.md)
 - [Remote Rule Providers](docs/remote-rule-providers.md)
 - [Rule Set SSRF and cache security](docs/rule-set-security.md)
+- [Operations overview](docs/operations.md)
+- [Release process and manifest](docs/release-process.md)
+- [Fresh image deployment](docs/deployment.md)
+- [Transactional update](docs/update.md)
+- [Rollback safety](docs/rollback.md)
+- [SQLite backup foundation](docs/backup.md)
+- [Low-resource VPS behavior](docs/low-resource-vps.md)
+- [Release state format](docs/release-state.md)
+- [Operations troubleshooting](docs/troubleshooting.md)
 
 ## Roadmap
 
-V0.3 is intentionally limited to a reusable Rule Set and Policy ecosystem. Distributed controllers, marketplace/sharing, AI rule generation, traffic collection, quotas, billing, mobile apps, and multi-server orchestration remain future work. V0.4 development has not started.
+V0.3.1 Phase 1 is limited to release and operations stabilization. Scheduled/cloud backups, automatic cross-schema database restore, Web restore UI, distributed controllers, marketplace/sharing, AI rule generation, traffic collection, quotas, billing, mobile apps, and multi-server orchestration remain future work. Phase 2 and V0.4 development have not started.
 
 ## Contributing
 
