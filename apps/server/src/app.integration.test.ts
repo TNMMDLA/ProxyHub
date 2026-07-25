@@ -966,4 +966,92 @@ describe('ProxyHub foundation API', () => {
       prisma.auditLog.findFirstOrThrow({ where: { action: 'NODE_CREATE', result: 'FAILURE' } }),
     ).resolves.toBeTruthy();
   });
+
+  it('rejects unauthenticated diagnostics access', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/diagnostics/overview' });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error.code).toBe('AUTH_REQUIRED');
+  });
+
+  it('returns an authenticated schema-valid diagnostics overview', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/diagnostics/overview',
+      headers: { cookie },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().data.kind).toBe('overview');
+    expect(response.json().data.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'database.sqlite.health' })]),
+    );
+  });
+
+  it('does not create audit spam for overview polling', async () => {
+    const before = await prisma.auditLog.count({ where: { action: 'DIAGNOSTICS_OVERVIEW' } });
+    await app.inject({
+      method: 'GET',
+      url: '/api/diagnostics/overview',
+      headers: { cookie },
+    });
+    expect(await prisma.auditLog.count({ where: { action: 'DIAGNOSTICS_OVERVIEW' } })).toBe(before);
+  });
+
+  it('runs manual deep diagnostics and creates an audit', async () => {
+    const subscriptionsBefore = await prisma.subscription.findMany({
+      select: { id: true, lastAccessAt: true, updatedAt: true },
+      orderBy: { id: 'asc' },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/diagnostics/run',
+      headers: { cookie },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().data.kind).toBe('deep');
+    expect(
+      await prisma.subscription.findMany({
+        select: { id: true, lastAccessAt: true, updatedAt: true },
+        orderBy: { id: 'asc' },
+      }),
+    ).toEqual(subscriptionsBefore);
+    await expect(
+      prisma.auditLog.findFirstOrThrow({
+        where: { action: 'DIAGNOSTICS_DEEP_SCAN', result: 'SUCCESS' },
+      }),
+    ).resolves.toBeTruthy();
+  });
+
+  it('exports a sanitized diagnostics bundle and creates an audit', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/diagnostics/export',
+      headers: { cookie },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.headers['content-disposition']).toContain('proxyhub-diagnostics-');
+    expect(response.json().data.kind).toBe('export');
+    expect(response.body).not.toContain('correct-horse-battery-staple');
+    expect(response.body).not.toContain('DATABASE_URL');
+    await expect(
+      prisma.auditLog.findFirstOrThrow({
+        where: { action: 'DIAGNOSTICS_EXPORTED', result: 'SUCCESS' },
+      }),
+    ).resolves.toBeTruthy();
+  });
+
+  it('rejects non-admin diagnostics access', async () => {
+    const admin = await prisma.adminUser.findUniqueOrThrow({ where: { username: 'admin' } });
+    await prisma.adminUser.update({ where: { id: admin.id }, data: { role: 'VIEWER' } });
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/diagnostics/overview',
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json().error.code).toBe('FORBIDDEN');
+    } finally {
+      await prisma.adminUser.update({ where: { id: admin.id }, data: { role: 'ADMIN' } });
+    }
+  });
 });

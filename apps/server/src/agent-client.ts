@@ -3,6 +3,7 @@ import type {
   RealityTargetCompatibilityResult,
   XrayHealthStatus,
 } from '@proxyhub/shared';
+import type { DiagnosticsReport } from '@proxyhub/diagnostics-core';
 import { config } from './config.js';
 import { AppError } from './errors.js';
 
@@ -21,6 +22,7 @@ export interface AgentApplyResult {
 
 export interface AgentClient {
   status(): Promise<AgentStatusData>;
+  diagnostics?(deep?: boolean, signal?: AbortSignal): Promise<DiagnosticsReport>;
   testRealityTarget(
     input: {
       serverName: string;
@@ -90,6 +92,12 @@ async function agentRequest<T>(
 
 export const defaultAgentClient: AgentClient = {
   status: () => agentRequest<AgentStatusData>('/status'),
+  diagnostics: (deep = false, signal) =>
+    agentRequest<DiagnosticsReport>(
+      `/diagnostics?deep=${deep ? 'true' : 'false'}`,
+      signal ? { signal } : {},
+      deep ? 20_000 : 5_000,
+    ),
   testRealityTarget: (input, signal) =>
     agentRequest<RealityTargetCompatibilityResult>(
       '/xray/reality-compatibility',

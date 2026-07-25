@@ -18,6 +18,7 @@ import {
   Route as RouteIcon,
   Waypoints,
   ListTree,
+  Stethoscope,
   X,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -34,6 +35,7 @@ const groups = [
       { to: '/servers', label: 'Servers', icon: Server },
       { to: '/nodes', label: 'Nodes', icon: Waypoints },
       { to: '/node-pools', label: 'Node Pools', icon: Boxes },
+      { to: '/diagnostics', label: 'Diagnostics', icon: Stethoscope },
       { to: '/security', label: 'Security', icon: ShieldCheck },
     ],
   },
@@ -137,17 +139,19 @@ export function AppShell({ admin }: { admin: Admin }) {
           {groups.map((group) => (
             <div className="nav-group" key={group.label}>
               <span>{group.label}</span>
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) => (isActive ? 'active' : '')}
-                >
-                  <item.icon size={18} strokeWidth={1.8} />
-                  <b>{item.label}</b>
-                  {item.label === 'Notifications' && unread ? <em>{unread}</em> : null}
-                </NavLink>
-              ))}
+              {group.items
+                .filter((item) => item.to !== '/diagnostics' || admin.role === 'ADMIN')
+                .map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) => (isActive ? 'active' : '')}
+                  >
+                    <item.icon size={18} strokeWidth={1.8} />
+                    <b>{item.label}</b>
+                    {item.label === 'Notifications' && unread ? <em>{unread}</em> : null}
+                  </NavLink>
+                ))}
             </div>
           ))}
         </nav>
@@ -232,6 +236,7 @@ export function AppShell({ admin }: { admin: Admin }) {
             <p>Quick navigation</p>
             {groups
               .flatMap((group) => group.items)
+              .filter((item) => item.to !== '/diagnostics' || admin.role === 'ADMIN')
               .slice(0, 8)
               .map((item) => (
                 <button

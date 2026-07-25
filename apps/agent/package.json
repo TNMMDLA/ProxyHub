@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@proxyhub/diagnostics-core": "workspace:*",
     "@proxyhub/shared": "workspace:*",
     "@proxyhub/xray-manager": "workspace:*",
     "fastify": "^5.0.0",

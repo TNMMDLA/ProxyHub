@@ -93,6 +93,8 @@ jobs:
         run: docker compose -f docker-compose.yml -f docker-compose.release.yml config --quiet
       - run: docker compose pull caddy
       - run: docker compose build proxyhub-web proxyhub-server proxyhub-agent xray
+      - name: Prepare isolated diagnostics mounts
+        run: mkdir -p .proxyhub/state backups
       - name: Start production runtime services
         run: docker compose up -d
       - name: Verify healthy runtime and API

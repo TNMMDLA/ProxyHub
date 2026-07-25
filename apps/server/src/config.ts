@@ -36,6 +36,23 @@ const envSchema = z
     RULE_SET_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
     RULE_SET_MAX_REDIRECTS: z.coerce.number().int().min(0).max(10).default(3),
     RULE_SET_ALLOW_HTTP: booleanFromEnvironment.default(false),
+    PROXYHUB_DIAGNOSTICS_ENABLED: booleanFromEnvironment.default(true),
+    PROXYHUB_DIAGNOSTICS_CACHE_TTL_MS: z.coerce
+      .number()
+      .int()
+      .min(5_000)
+      .max(60_000)
+      .default(10_000),
+    PROXYHUB_DIAGNOSTICS_DEEP_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(5_000)
+      .max(60_000)
+      .default(30_000),
+    PROXYHUB_DIAGNOSTICS_MAX_HISTORY: z.coerce.number().int().min(1).max(100).default(20),
+    PROXYHUB_DIAGNOSTICS_MAX_BACKUPS: z.coerce.number().int().min(1).max(200).default(50),
+    PROXYHUB_STATE_DIR: z.string().default('/var/lib/proxyhub/state'),
+    PROXYHUB_BACKUP_DIR: z.string().default('/var/lib/proxyhub/backups'),
   })
   .superRefine((environment, context) => {
     if (environment.NODE_ENV !== 'production') return;

@@ -479,10 +479,26 @@ export class RealityTargetCompatibilityService {
   private readonly runtime: RealityCompatibilityRuntime;
   private readonly timeoutMs: number;
   private busy = false;
+  private temporaryProcessCount = 0;
+  private temporaryDirectoryCount = 0;
 
   constructor(private readonly options: RealityCompatibilityServiceOptions) {
     this.timeoutMs = options.timeoutMs ?? 20_000;
     this.runtime = { ...nativeRuntime, ...options.runtime };
+  }
+
+  diagnosticsState(): {
+    available: true;
+    busy: boolean;
+    temporaryProcessCount: number;
+    temporaryDirectoryCount: number;
+  } {
+    return {
+      available: true,
+      busy: this.busy,
+      temporaryProcessCount: this.temporaryProcessCount,
+      temporaryDirectoryCount: this.temporaryDirectoryCount,
+    };
   }
 
   async test(
@@ -583,6 +599,7 @@ export class RealityTargetCompatibilityService {
     try {
       operationResult = await (async () => {
         directory = await this.runtime.createTempDirectory();
+        this.temporaryDirectoryCount += 1;
         const credentials = generateRealityCredentials();
         const serverPort = await this.runtime.allocatePort(signal);
         let proxyPort = await this.runtime.allocatePort(signal);
@@ -620,6 +637,7 @@ export class RealityTargetCompatibilityService {
         try {
           server = this.runtime.startXray(this.options.binary, serverConfigPath);
           processes.push(server);
+          this.temporaryProcessCount += 1;
           await this.runtime.waitForPort(serverPort, server, signal);
         } catch {
           throw new RealityCompatibilityError(
@@ -632,6 +650,7 @@ export class RealityTargetCompatibilityService {
         try {
           client = this.runtime.startXray(this.options.binary, clientConfigPath);
           processes.push(client);
+          this.temporaryProcessCount += 1;
           await this.runtime.waitForPort(proxyPort, client, signal);
         } catch {
           throw new RealityCompatibilityError(
@@ -675,6 +694,8 @@ export class RealityTargetCompatibilityService {
       ...processes.reverse().map((process) => process.stop()),
       ...(directory ? [this.runtime.removeTempDirectory(directory)] : []),
     ]);
+    this.temporaryProcessCount = Math.max(0, this.temporaryProcessCount - processes.length);
+    if (directory) this.temporaryDirectoryCount = Math.max(0, this.temporaryDirectoryCount - 1);
     if (cleanup.some((entry) => entry.status === 'rejected')) {
       throw new RealityCompatibilityError(
         'REALITY_TARGET_TEST_CLEANUP_FAILED',

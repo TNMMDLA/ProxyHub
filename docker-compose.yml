@@ -21,8 +21,23 @@ services:
       RULE_SET_FETCH_TIMEOUT_MS: ${RULE_SET_FETCH_TIMEOUT_MS:-10000}
       RULE_SET_MAX_REDIRECTS: ${RULE_SET_MAX_REDIRECTS:-3}
       RULE_SET_ALLOW_HTTP: ${RULE_SET_ALLOW_HTTP:-false}
+      PROXYHUB_DIAGNOSTICS_ENABLED: ${PROXYHUB_DIAGNOSTICS_ENABLED:-true}
+      PROXYHUB_DIAGNOSTICS_CACHE_TTL_MS: ${PROXYHUB_DIAGNOSTICS_CACHE_TTL_MS:-10000}
+      PROXYHUB_DIAGNOSTICS_DEEP_TIMEOUT_MS: ${PROXYHUB_DIAGNOSTICS_DEEP_TIMEOUT_MS:-30000}
+      PROXYHUB_DIAGNOSTICS_MAX_HISTORY: ${PROXYHUB_DIAGNOSTICS_MAX_HISTORY:-20}
+      PROXYHUB_DIAGNOSTICS_MAX_BACKUPS: ${PROXYHUB_DIAGNOSTICS_MAX_BACKUPS:-50}
+      PROXYHUB_STATE_DIR: /var/lib/proxyhub/state
+      PROXYHUB_BACKUP_DIR: /var/lib/proxyhub/backups
     volumes:
       - proxyhub-data:/app/data
+      - type: bind
+        source: ${PROXYHUB_STATE_DIR:-./.proxyhub/state}
+        target: /var/lib/proxyhub/state
+        read_only: true
+      - type: bind
+        source: ${PROXYHUB_BACKUP_DIR:-./backups}
+        target: /var/lib/proxyhub/backups
+        read_only: true
     depends_on:
       proxyhub-agent:
         condition: service_healthy

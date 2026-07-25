@@ -57,6 +57,80 @@ if [[ "$database_integrity" != "ok" ]]; then
   exit 1
 fi
 
+mkdir -p \
+  .proxyhub/state/releases/history \
+  .proxyhub/state/releases/manifests \
+  .proxyhub/state/transactions \
+  .proxyhub/state/diagnostics/runtime-fixture \
+  backups
+cat >.proxyhub/state/releases/current.json <<'EOF'
+{"releaseId":"runtime-fixture","version":"0.3.1-dev","gitSha":"0000000000000000000000000000000000000000","deployMode":"source","deployedAt":"2026-01-01T00:00:00Z","transactionId":"runtime-fixture"}
+EOF
+cat >.proxyhub/state/transactions/runtime-fixture.json <<'EOF'
+{"transactionId":"runtime-fixture","operation":"deploy","currentStage":"HEALTH_VERIFIED","updatedAt":"2026-01-01T00:00:00Z"}
+EOF
+cat >.proxyhub/state/releases/manifests/runtime-fixture.json <<'EOF'
+{"schemaVersion":1,"releaseId":"runtime-fixture","version":"0.3.1-dev","gitSha":"0000000000000000000000000000000000000000"}
+EOF
+backup_fixture="$(mktemp -d)"
+trap 'rm -rf "$backup_fixture"' EXIT
+cat >"$backup_fixture/manifest.json" <<'EOF'
+{"schemaVersion":1,"application":{"name":"ProxyHub","version":"0.3.1-dev","gitSha":"0000000000000000000000000000000000000000","xrayVersion":"26.5.9"},"createdAt":"2026-01-01T00:00:00.000Z","database":{"filename":"database.sqlite","sizeBytes":7,"sha256":"1111111111111111111111111111111111111111111111111111111111111111","integrity":"ok","migrationFingerprint":"2222222222222222222222222222222222222222222222222222222222222222"},"encryptionKeyIncluded":false}
+EOF
+printf 'fixture' >"$backup_fixture/database.sqlite"
+tar -czf backups/proxyhub-backup-20260101T000000Z-000000000000.tar.gz \
+  -C "$backup_fixture" database.sqlite manifest.json
+
+docker compose exec -T proxyhub-server node --input-type=module <<'EOF'
+const base = 'http://127.0.0.1:3000';
+const bootstrap = await fetch(`${base}/api/auth/bootstrap`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ username: 'runtime-admin', password: 'runtime-smoke-password-123' }),
+});
+if (!bootstrap.ok) throw new Error(`Diagnostics bootstrap failed: ${bootstrap.status}`);
+const cookie = bootstrap.headers.get('set-cookie')?.split(';')[0];
+if (!cookie) throw new Error('Diagnostics bootstrap did not issue a session cookie');
+const authenticated = (path, init = {}) =>
+  fetch(`${base}${path}`, { ...init, headers: { cookie, ...(init.headers ?? {}) } });
+const overview = await authenticated('/api/diagnostics/overview');
+const overviewBody = await overview.json();
+if (!overview.ok || !overviewBody?.success || overviewBody.data?.kind !== 'overview') {
+  throw new Error(`Diagnostics overview failed: ${JSON.stringify(overviewBody)}`);
+}
+for (const id of ['runtime.server.health', 'database.sqlite.health', 'storage.database.filesystem']) {
+  if (!overviewBody.data.items.some((item) => item.id === id)) {
+    throw new Error(`Diagnostics overview is missing ${id}`);
+  }
+}
+const [deepOne, deepTwo] = await Promise.all([
+  authenticated('/api/diagnostics/run', { method: 'POST' }),
+  authenticated('/api/diagnostics/run', { method: 'POST' }),
+]);
+const deepResponses = await Promise.all([deepOne.json(), deepTwo.json()]);
+if (!deepResponses.some((body) => body?.success && body.data?.kind === 'deep')) {
+  throw new Error('No deep diagnostics request completed successfully');
+}
+const successfulDeep = deepResponses.find((body) => body?.success && body.data?.kind === 'deep');
+const backup = successfulDeep?.data?.items?.find((item) => item.id === 'backup.archive.visibility');
+if (backup?.details?.manifestVerification !== 'passed') {
+  throw new Error(`Backup manifest validation failed: ${JSON.stringify(backup)}`);
+}
+if (!deepResponses.some((body) => body?.error?.code === 'DIAGNOSTICS_SCAN_BUSY')) {
+  throw new Error('Concurrent deep diagnostics request was not rejected as busy');
+}
+const exported = await authenticated('/api/diagnostics/export');
+const exportedBody = await exported.json();
+if (!exported.ok || !exportedBody?.success || exportedBody.data?.kind !== 'export') {
+  throw new Error('Diagnostics export failed');
+}
+const serialized = JSON.stringify(exportedBody);
+if (/(authorization|cookie|password|privateKey|database_url|\/app\/|\/var\/)/i.test(serialized)) {
+  throw new Error('Diagnostics export contains a forbidden secret or absolute path');
+}
+console.log(`Diagnostics runtime smoke passed with ${overviewBody.data.items.length} overview items.`);
+EOF
+
 for service in "${services[@]}"; do
   container_id="$(docker compose ps -q --all "$service")"
   log_driver="$(docker inspect --format '{{.HostConfig.LogConfig.Type}}' "$container_id")"

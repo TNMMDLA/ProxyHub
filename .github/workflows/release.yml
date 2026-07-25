@@ -238,6 +238,8 @@ jobs:
       - name: Pull published immutable images
         if: steps.meta.outputs.publish == 'true'
         run: docker compose pull proxyhub-web proxyhub-server proxyhub-agent xray
+      - name: Prepare isolated diagnostics mounts
+        run: mkdir -p .proxyhub/state backups
       - name: Start all five production services
         run: docker compose up -d
       - name: Verify runtime, metadata, SQLite and log rotation

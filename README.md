@@ -1,10 +1,14 @@
 # ProxyHub
 
-ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.3.1 stabilization adds an immutable release identity and the first release, deployment, update, rollback, and consistent-backup operations foundation.
+ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.3.1 stabilization adds an immutable release identity, release operations foundation, and a read-only Diagnostics Center.
 
 ![ProxyHub dashboard design](docs/design/proxyhub-dashboard-concept.png)
 
-> Status: **V0.3.1 Phase 1 Development / Pre-production**. Release/operations code and isolated CI validation do not constitute production acceptance. **Reality Target Compatibility Hotfix VPS Verification Pending** and **V0.3.1 Phase 1 VPS Deployment Pending**.
+> Status: **V0.3.1 Stabilization in progress — Development / Pre-production**.
+>
+> - Phase 1 — Release and Operations Foundation: **Code and CI Complete; VPS Deployment Pending**.
+> - Phase 2 — Diagnostics Center and Runtime Observability: **Code and CI Complete; VPS Deployment Pending**.
+> - Reality Target Compatibility Hotfix: **Code and CI Verified; VPS Verification Pending**.
 
 ### V0.1.1 implementation notes
 
@@ -41,6 +45,7 @@ ProxyHub is a modern, open-source proxy infrastructure management platform for L
 - Canonical build identity, schema-validated release manifests, digest-pinned GHCR images, and OCI labels
 - Linux preflight/health/deploy/update/rollback operations with a global lock and atomic transaction state
 - WAL-safe SQLite backup create/list/verify/prune with integrity checks and conservative retention
+- Administrator-only read-only diagnostics with bounded overview caching, manual deep scan, operations visibility, and sanitized JSON export
 
 ## Architecture
 
@@ -57,6 +62,10 @@ flowchart LR
   Supervisor --> Xray
   API --> Policy["Policy compiler core"]
   API --> Rules["Rule Set fetch / parse / cache"]
+  API --> Diagnostics["Read-only diagnostics aggregation"]
+  Diagnostics --> Agent
+  Diagnostics --> DB
+  Diagnostics --> Ops["Phase 1 state + backup metadata"]
   Rules --> Policy
   Policy --> Sub["Mihomo / sing-box / raw VLESS"]
 ```
@@ -114,23 +123,28 @@ docker compose logs -f proxyhub-server proxyhub-agent xray caddy
 
 ## Environment variables
 
-| Variable                           | Required           | Default                      | Purpose                                                       |
-| ---------------------------------- | ------------------ | ---------------------------- | ------------------------------------------------------------- |
-| `PANEL_DOMAIN`                     | Yes for public use | `localhost`                  | Caddy host and certificate name                               |
-| `WEB_ORIGIN`                       | Yes for public use | `https://localhost`          | Allowed credentialed browser origin                           |
-| `ENCRYPTION_KEY`                   | Yes                | none in Compose              | Encrypts TOTP and Reality secrets; use 32+ random characters  |
-| `AGENT_TOKEN`                      | Yes                | none in Compose              | Authenticates controller-to-Agent calls                       |
-| `DATABASE_URL`                     | No                 | `file:/app/data/proxyhub.db` | Prisma SQLite database URL                                    |
-| `SESSION_TTL_HOURS`                | No                 | `24`                         | Session lifetime                                              |
-| `TRUST_PROXY`                      | No                 | `true` in Compose            | Trusts Caddy forwarding headers                               |
-| `XRAY_BINARY`                      | No                 | `/usr/local/bin/xray`        | Fixed Xray executable path                                    |
-| `XRAY_HEALTH_TIMEOUT_MS`           | No                 | `12000`                      | Restart acknowledgement and health-check timeout              |
-| `REALITY_COMPATIBILITY_TIMEOUT_MS` | No                 | `20000`                      | Global timeout for the isolated live Reality target preflight |
-| `RULE_SET_MAX_BYTES`               | No                 | `5242880`                    | Maximum decompressed remote Rule Set response                 |
-| `RULE_SET_MAX_RULES`               | No                 | `50000`                      | Maximum normalized rules per remote source                    |
-| `RULE_SET_FETCH_TIMEOUT_MS`        | No                 | `10000`                      | Remote fetch timeout in milliseconds                          |
-| `RULE_SET_MAX_REDIRECTS`           | No                 | `3`                          | Maximum validated redirects                                   |
-| `RULE_SET_ALLOW_HTTP`              | No                 | `false`                      | Development-only HTTP opt-in; keep false in production        |
+| Variable                               | Required           | Default                      | Purpose                                                       |
+| -------------------------------------- | ------------------ | ---------------------------- | ------------------------------------------------------------- |
+| `PANEL_DOMAIN`                         | Yes for public use | `localhost`                  | Caddy host and certificate name                               |
+| `WEB_ORIGIN`                           | Yes for public use | `https://localhost`          | Allowed credentialed browser origin                           |
+| `ENCRYPTION_KEY`                       | Yes                | none in Compose              | Encrypts TOTP and Reality secrets; use 32+ random characters  |
+| `AGENT_TOKEN`                          | Yes                | none in Compose              | Authenticates controller-to-Agent calls                       |
+| `DATABASE_URL`                         | No                 | `file:/app/data/proxyhub.db` | Prisma SQLite database URL                                    |
+| `SESSION_TTL_HOURS`                    | No                 | `24`                         | Session lifetime                                              |
+| `TRUST_PROXY`                          | No                 | `true` in Compose            | Trusts Caddy forwarding headers                               |
+| `XRAY_BINARY`                          | No                 | `/usr/local/bin/xray`        | Fixed Xray executable path                                    |
+| `XRAY_HEALTH_TIMEOUT_MS`               | No                 | `12000`                      | Restart acknowledgement and health-check timeout              |
+| `REALITY_COMPATIBILITY_TIMEOUT_MS`     | No                 | `20000`                      | Global timeout for the isolated live Reality target preflight |
+| `RULE_SET_MAX_BYTES`                   | No                 | `5242880`                    | Maximum decompressed remote Rule Set response                 |
+| `RULE_SET_MAX_RULES`                   | No                 | `50000`                      | Maximum normalized rules per remote source                    |
+| `RULE_SET_FETCH_TIMEOUT_MS`            | No                 | `10000`                      | Remote fetch timeout in milliseconds                          |
+| `RULE_SET_MAX_REDIRECTS`               | No                 | `3`                          | Maximum validated redirects                                   |
+| `RULE_SET_ALLOW_HTTP`                  | No                 | `false`                      | Development-only HTTP opt-in; keep false in production        |
+| `PROXYHUB_DIAGNOSTICS_ENABLED`         | No                 | `true`                       | Enables administrator-only read-only diagnostics              |
+| `PROXYHUB_DIAGNOSTICS_CACHE_TTL_MS`    | No                 | `10000`                      | Overview cache TTL, bounded from 5–60 seconds                 |
+| `PROXYHUB_DIAGNOSTICS_DEEP_TIMEOUT_MS` | No                 | `30000`                      | Manual deep scan global timeout                               |
+| `PROXYHUB_DIAGNOSTICS_MAX_HISTORY`     | No                 | `20`                         | Maximum release/transaction entries returned                  |
+| `PROXYHUB_DIAGNOSTICS_MAX_BACKUPS`     | No                 | `50`                         | Maximum backup metadata entries returned                      |
 
 Never reuse `ENCRYPTION_KEY` as the Agent token. Back up the encryption key separately; encrypted secrets cannot be recovered without it.
 Production startup rejects the development defaults and the placeholder values from `.env.example`.
@@ -177,7 +191,7 @@ pnpm compat:validate:windows
 
 The integration suite creates isolated SQLite databases, tests fresh, V0.1.1, and populated V0.2.1-to-V0.3 upgrades, and covers administrator security, Xray rollback, policies, Rule Set CRUD/import/cache/SSRF/LKG/concurrency, deterministic compilation, subscriptions, notifications, and audit logs. The runtime package regression asserts that every Server workspace dependency resolves to compiled `dist/index.js`, never TypeScript under `src`. GitHub Actions additionally builds immutable images, starts Web, Server, Agent, Xray, and Caddy, requires health with zero restarts, validates build metadata and SQLite, creates/verifies a backup, exercises dry-run operations, and simulates a failed update in an isolated Compose project.
 
-The complete Linux deployment acceptance procedure is in [docs/deployment-smoke-test.md](docs/deployment-smoke-test.md).
+The complete Linux deployment acceptance procedure is in [docs/deployment-smoke-test.md](docs/deployment-smoke-test.md). Diagnostics architecture and safety boundaries are documented in [docs/diagnostics/overview.md](docs/diagnostics/overview.md).
 
 ## API
 
@@ -240,6 +254,10 @@ All responses use `{ "success": true, "data": ... }` or:
 | `PATCH`                  | `/api/notifications/:id/read`         | Mark one notification read                 |
 | `POST`                   | `/api/notifications/read-all`         | Mark all notifications read                |
 | `GET`                    | `/api/audit-logs`                     | Recent audit records                       |
+| `GET`                    | `/api/diagnostics/overview`           | Cached read-only diagnostics overview      |
+| `GET`                    | `/api/diagnostics/{section}`          | Read-only diagnostics section              |
+| `POST`                   | `/api/diagnostics/run`                | Bounded manual deep diagnostics            |
+| `GET`                    | `/api/diagnostics/export`             | Sanitized diagnostics JSON bundle          |
 
 ## Database
 
@@ -260,6 +278,7 @@ apps/
   server/              Fastify controller and Prisma schema
   agent/               Authenticated VPS Agent
 packages/
+  diagnostics-core/    Validated status, freshness, redaction, and report schemas
   shared/              Shared schemas, API types, event constants
   xray-manager/        Reality adapter and validated config operations
   policy-core/         Normalizer, validator, capability matrix, and client adapters
@@ -300,10 +319,15 @@ docs/design/           Accepted visual design reference
 - [Low-resource VPS behavior](docs/low-resource-vps.md)
 - [Release state format](docs/release-state.md)
 - [Operations troubleshooting](docs/troubleshooting.md)
+- [Diagnostics Center](docs/diagnostics/overview.md)
+- [Diagnostics security boundary](docs/diagnostics/security.md)
+- [Sanitized diagnostics export](docs/diagnostics/export.md)
+- [Diagnostics troubleshooting](docs/operations/troubleshooting.md)
+- [Diagnostics on a low-resource VPS](docs/operations/low-resource-vps.md)
 
 ## Roadmap
 
-V0.3.1 Phase 1 is limited to release and operations stabilization. Scheduled/cloud backups, automatic cross-schema database restore, Web restore UI, distributed controllers, marketplace/sharing, AI rule generation, traffic collection, quotas, billing, mobile apps, and multi-server orchestration remain future work. Phase 2 and V0.4 development have not started.
+V0.3.1 Phase 1 provides the release and operations foundation; Phase 2 adds read-only diagnostics and runtime visibility. VPS deployment acceptance remains pending for both phases. Automated repair, Web restart/deploy/update/rollback/restore controls, scheduled/cloud backups, automatic cross-schema database restore, distributed controllers, marketplace/sharing, AI rule generation, traffic collection, quotas, billing, mobile apps, and multi-server orchestration remain future work. Phase 3 and V0.4 have not started.
 
 ## Contributing
 

@@ -16,6 +16,9 @@ import { config } from './config.js';
 import { AppError } from './errors.js';
 import { defaultAgentClient, type AgentClient } from './agent-client.js';
 import { getBuildMetadata } from './release/build-metadata.js';
+import { diagnosticsRoutes } from './routes/diagnostics.js';
+import { DiagnosticsService } from './diagnostics/service.js';
+import { prisma } from './db.js';
 
 export function redactRequestUrl(url: string | undefined): string | undefined {
   return url?.replace(/(\/sub\/)[^/?#]+/g, '$1[REDACTED]');
@@ -99,5 +102,9 @@ export async function buildApp(options: { agentClient?: AgentClient; logFile?: s
   await app.register(subscriptionRoutes, { prefix: '/api/subscriptions' });
   await app.register(publicSubscriptionRoutes, { prefix: '/sub' });
   await app.register(operationRoutes, { prefix: '/api', agentClient });
+  await app.register(diagnosticsRoutes, {
+    prefix: '/api/diagnostics',
+    service: new DiagnosticsService(prisma, agentClient, config),
+  });
   return app;
 }

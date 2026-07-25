@@ -5,6 +5,7 @@ const requireFromServer = createRequire(new URL('../../apps/server/package.json'
 
 /** @type {Array<readonly [string, readonly string[]]>} */
 const packages = [
+  ['@proxyhub/diagnostics-core', ['diagnosticItemSchema', 'diagnosticsReportSchema']],
   ['@proxyhub/policy-core', ['compilePolicy', 'CAPABILITIES']],
   ['@proxyhub/rule-set-core', ['parseRuleSet', 'normalizeRuleSet']],
   ['@proxyhub/shared', ['createNodeSchema', 'createRuleSetSchema']],

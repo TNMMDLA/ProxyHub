@@ -12,10 +12,12 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* tsconfig.base.json ./
 COPY release/version.json release/version.json
 COPY scripts/release/generate-version.mjs scripts/release/generate-version.mjs
 COPY apps/agent/package.json apps/agent/package.json
+COPY packages/diagnostics-core/package.json packages/diagnostics-core/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/xray-manager/package.json packages/xray-manager/package.json
 RUN pnpm install --filter @proxyhub/agent... --frozen-lockfile
 COPY apps/agent apps/agent
+COPY packages/diagnostics-core packages/diagnostics-core
 COPY packages/shared packages/shared
 COPY packages/xray-manager packages/xray-manager
 RUN node scripts/release/generate-version.mjs \

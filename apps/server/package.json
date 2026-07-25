@@ -20,6 +20,7 @@
     "@fastify/helmet": "^13.0.0",
     "@fastify/rate-limit": "^10.0.0",
     "@prisma/client": "^6.19.0",
+    "@proxyhub/diagnostics-core": "workspace:*",
     "@proxyhub/policy-core": "workspace:*",
     "@proxyhub/rule-set-core": "workspace:*",
     "@proxyhub/shared": "workspace:*",
@@ -30,10 +31,12 @@
     "pino": "^9.0.0",
     "pino-pretty": "^13.0.0",
     "qrcode": "^1.5.4",
+    "tar-stream": "^3.1.7",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.5",
+    "@types/tar-stream": "^3.1.4",
     "prisma": "^6.19.0",
     "tsx": "^4.0.0",
     "typescript": "^5.9.0",

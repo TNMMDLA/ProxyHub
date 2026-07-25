@@ -20,6 +20,7 @@ import {
   RealityCompatibilityError,
   RealityTargetCompatibilityService,
 } from './reality-target-compatibility.js';
+import { collectAgentDiagnostics } from './diagnostics.js';
 
 const env = parseAgentConfig(process.env);
 
@@ -88,6 +89,14 @@ app.get('/status', async () => {
       },
       xray,
     },
+  };
+});
+
+app.get('/diagnostics', async (request) => {
+  const query = z.object({ deep: z.enum(['true', 'false']).optional() }).parse(request.query);
+  return {
+    success: true,
+    data: await collectAgentDiagnostics(env, realityCompatibility, { deep: query.deep === 'true' }),
   };
 });
 

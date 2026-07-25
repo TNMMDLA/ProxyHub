@@ -17,6 +17,7 @@ const PolicyStudioPage = lazy(() => import('./pages/PolicyStudioPage'));
 const SubscriptionsPage = lazy(() => import('./pages/SubscriptionsPage'));
 const RuleSetsPage = lazy(() => import('./pages/RuleSetsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage'));
 
 function ScreenLoader() {
   return (
@@ -95,6 +96,14 @@ export function App() {
           element={
             <Suspense fallback={<ScreenLoader />}>
               <SubscriptionsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/diagnostics"
+          element={
+            <Suspense fallback={<ScreenLoader />}>
+              <DiagnosticsPage />
             </Suspense>
           }
         />

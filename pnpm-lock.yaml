@@ -49,6 +49,9 @@ importers:
 
   apps/agent:
     dependencies:
+      '@proxyhub/diagnostics-core':
+        specifier: workspace:*
+        version: link:../../packages/diagnostics-core
       '@proxyhub/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -89,6 +92,9 @@ importers:
       '@prisma/client':
         specifier: ^6.19.0
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      '@proxyhub/diagnostics-core':
+        specifier: workspace:*
+        version: link:../../packages/diagnostics-core
       '@proxyhub/policy-core':
         specifier: workspace:*
         version: link:../../packages/policy-core
@@ -119,6 +125,9 @@ importers:
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
+      tar-stream:
+        specifier: ^3.1.7
+        version: 3.2.0
       zod:
         specifier: ^4.0.0
         version: 4.4.3
@@ -126,6 +135,9 @@ importers:
       '@types/qrcode':
         specifier: ^1.5.5
         version: 1.5.6
+      '@types/tar-stream':
+        specifier: ^3.1.4
+        version: 3.1.4
       prisma:
         specifier: ^6.19.0
         version: 6.19.3(typescript@5.9.3)
@@ -144,6 +156,9 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.0.0
         version: 5.4.0(react-hook-form@7.82.0(react@19.2.7))
+      '@proxyhub/diagnostics-core':
+        specifier: workspace:*
+        version: link:../../packages/diagnostics-core
       '@proxyhub/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -202,6 +217,16 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.4.3(@types/node@24.13.3)(jiti@1.21.7)(tsx@4.23.1)(yaml@2.8.1)
+
+  packages/diagnostics-core:
+    dependencies:
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
 
   packages/policy-core:
     devDependencies:
@@ -1572,6 +1597,12 @@ packages:
         integrity: sha512-MXfmqaVPEVgkBT/aY0aGCkRWWtByiYQXo3xdQ8r5RzuFrPiRn8Gar2tQdXSUQ2GKV3bkXckek89V8wQBY2Q/Aw==,
       }
 
+  '@types/tar-stream@3.1.4':
+    resolution:
+      {
+        integrity: sha512-921gW0+g29mCJX0fRvqeHzBlE/XclDaAG0Ousy1LCghsOhvaKacDeRGEVzQP9IPfKn8Vysy7FEXAIxycpc/CMg==,
+      }
+
   '@typescript-eslint/eslint-plugin@8.65.0':
     resolution:
       {
@@ -1841,6 +1872,17 @@ packages:
         integrity: sha512-g2tQ7LE7oOSqDfwEm3M+ZCMTJc7KiZCdJ4UwyZJb5ckTKyYu50OYmvv0mCFXPuYXoM4zkSt8zM9XQ9KCvxA74A==,
       }
 
+  b4a@1.8.1:
+    resolution:
+      {
+        integrity: sha512-aiqre1Nr0B/6DgE2N5vwTc+2/oQZ4Wh1t4NznYY4E00y8LCt6NqdRv81so00oo27D8MVKTpUa/MwUUtBLXCoDw==,
+      }
+    peerDependencies:
+      react-native-b4a: '*'
+    peerDependenciesMeta:
+      react-native-b4a:
+        optional: true
+
   balanced-match@1.0.2:
     resolution:
       {
@@ -1853,6 +1895,58 @@ packages:
         integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==,
       }
     engines: { node: 18 || 20 || >=22 }
+
+  bare-events@2.9.1:
+    resolution:
+      {
+        integrity: sha512-Z0oHEHAFDZkffN8Qc39zNZjQlMDkPJRyyyZieU1VH7u8c5S+qHZ2S8ixdKIAxEjfHO7FJxXmJWgteOghVanIsg==,
+      }
+    peerDependencies:
+      bare-abort-controller: '*'
+    peerDependenciesMeta:
+      bare-abort-controller:
+        optional: true
+
+  bare-fs@4.7.4:
+    resolution:
+      {
+        integrity: sha512-y1kC+ffIx/tPLdTE693uNjHfzTfr+ravR5tvWlMXe25nELbkqV400S71qHDwbkAQ1FVEZobB1NFRzFbCCcyBCQ==,
+      }
+    engines: { bare: '>=1.16.0' }
+    peerDependencies:
+      bare-buffer: '*'
+    peerDependenciesMeta:
+      bare-buffer:
+        optional: true
+
+  bare-path@3.1.1:
+    resolution:
+      {
+        integrity: sha512-JprUlveX3QjApC1cTpsUOiscADftCGVWkzitbHsRqv84hzYwYHw2mbluddsq5TvI8mH/8Ov1f4BiMAdcB0oYnQ==,
+      }
+
+  bare-stream@2.13.3:
+    resolution:
+      {
+        integrity: sha512-Kc+brLqvEqGkjyfiwJmImAOqLZL7OsoLKuavx+hJjgVV3nLTOjloJyPMFxjUPerGGHrNH0fLU06jjykMLWrERQ==,
+      }
+    peerDependencies:
+      bare-abort-controller: '*'
+      bare-buffer: '*'
+      bare-events: '*'
+    peerDependenciesMeta:
+      bare-abort-controller:
+        optional: true
+      bare-buffer:
+        optional: true
+      bare-events:
+        optional: true
+
+  bare-url@2.4.6:
+    resolution:
+      {
+        integrity: sha512-iQxPClE07hETVpbRoX7JXX3v/ZQViCxe/SYCxylRLzdEx1xJAufPptfiOqR8tqiCtmbtMDANKWszzjLu1PMAZQ==,
+      }
 
   baseline-browser-mapping@2.10.44:
     resolution:
@@ -2462,6 +2556,12 @@ packages:
         integrity: sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==,
       }
 
+  events-universal@1.0.1:
+    resolution:
+      {
+        integrity: sha512-LUd5euvbMLpwOF8m6ivPCbhQeSiYVNb8Vs0fQ8QjXo0JTkEHpz8pxdQf0gStltaPpw0Cca8b39KxvK9cfKRiAw==,
+      }
+
   expect-type@1.4.0:
     resolution:
       {
@@ -2506,6 +2606,12 @@ packages:
         integrity: sha512-DjlFSM5Pk9cGcL0q5QXl66eGzx0N6szNgaswwc5ZphlBohjTVJSnGgI+rJVOgOi65qUoQnDZN4nDqi33udtydQ==,
       }
     engines: { node: '>=6.0.0' }
+
+  fast-fifo@1.3.2:
+    resolution:
+      {
+        integrity: sha512-/d9sfos4yxzpwkDkuN7k2SqFKtYNmCTzgfEpz82x34IM9/zc8KGxQoXg1liNC/izpRM/MBdt44Nmx41ZWqk+FQ==,
+      }
 
   fast-glob@3.3.3:
     resolution:
@@ -3792,6 +3898,12 @@ packages:
         integrity: sha512-5GS12FdOZNliM5mAOxFRg7Ir0pWz8MdpYm6AY6VPkGpbA7ZzmbzNcBJQ0GPvvyWgcY7QAhCgf9Uy89I03faLkg==,
       }
 
+  streamx@2.28.0:
+    resolution:
+      {
+        integrity: sha512-1Yowhzjf0ivGMrTIkY9hav5TxobO9qIVqUE41fiCGMGgc3CLlf4MY+9AHmZqBWgDTue0fY9zWjYFVyf6Diuobw==,
+      }
+
   string-width@4.2.3:
     resolution:
       {
@@ -3855,6 +3967,24 @@ packages:
       }
     engines: { node: '>=14.0.0' }
     hasBin: true
+
+  tar-stream@3.2.0:
+    resolution:
+      {
+        integrity: sha512-ojzvCvVaNp6aOTFmG7jaRD0meowIAuPc3cMMhSgKiVWws1GyHbGd/xvnyuRKcKlMpt3qvxx6r0hreCNITP9hIg==,
+      }
+
+  teex@1.0.1:
+    resolution:
+      {
+        integrity: sha512-eYE6iEI62Ni1H8oIa7KlDU6uQBtqr4Eajni3wX7rpfXD8ysFx8z0+dri+KWEPWpBsxXfxu58x/0jvTVT1ekOSg==,
+      }
+
+  text-decoder@1.2.7:
+    resolution:
+      {
+        integrity: sha512-vlLytXkeP4xvEq2otHeJfSQIRyWxo/oZGEbXrtEEF9Hnmrdly59sUbzZ/QgyWuLYHctCHxFF4tRQZNQ9k60ExQ==,
+      }
 
   thenify-all@1.6.0:
     resolution:
@@ -4872,6 +5002,10 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
+  '@types/tar-stream@3.1.4':
+    dependencies:
+      '@types/node': 24.13.3
+
   '@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)':
     dependencies:
       '@eslint-community/regexpp': 4.12.2
@@ -5085,9 +5219,40 @@ snapshots:
       '@fastify/error': 4.2.0
       fastq: 1.20.1
 
+  b4a@1.8.1: {}
+
   balanced-match@1.0.2: {}
 
   balanced-match@4.0.4: {}
+
+  bare-events@2.9.1: {}
+
+  bare-fs@4.7.4:
+    dependencies:
+      bare-events: 2.9.1
+      bare-path: 3.1.1
+      bare-stream: 2.13.3(bare-events@2.9.1)
+      bare-url: 2.4.6
+      fast-fifo: 1.3.2
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - react-native-b4a
+
+  bare-path@3.1.1: {}
+
+  bare-stream@2.13.3(bare-events@2.9.1):
+    dependencies:
+      b4a: 1.8.1
+      streamx: 2.28.0
+      teex: 1.0.1
+    optionalDependencies:
+      bare-events: 2.9.1
+    transitivePeerDependencies:
+      - react-native-b4a
+
+  bare-url@2.4.6:
+    dependencies:
+      bare-path: 3.1.1
 
   baseline-browser-mapping@2.10.44: {}
 
@@ -5470,6 +5635,12 @@ snapshots:
 
   eventemitter3@4.0.7: {}
 
+  events-universal@1.0.1:
+    dependencies:
+      bare-events: 2.9.1
+    transitivePeerDependencies:
+      - bare-abort-controller
+
   expect-type@1.4.0: {}
 
   exsolve@1.1.0: {}
@@ -5485,6 +5656,8 @@ snapshots:
   fast-deep-equal@3.1.3: {}
 
   fast-equals@5.4.1: {}
+
+  fast-fifo@1.3.2: {}
 
   fast-glob@3.3.3:
     dependencies:
@@ -6166,6 +6339,15 @@ snapshots:
 
   std-env@3.10.0: {}
 
+  streamx@2.28.0:
+    dependencies:
+      events-universal: 1.0.1
+      fast-fifo: 1.3.2
+      text-decoder: 1.2.7
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - react-native-b4a
+
   string-width@4.2.3:
     dependencies:
       emoji-regex: 8.0.0
@@ -6227,6 +6409,30 @@ snapshots:
     transitivePeerDependencies:
       - tsx
       - yaml
+
+  tar-stream@3.2.0:
+    dependencies:
+      b4a: 1.8.1
+      bare-fs: 4.7.4
+      fast-fifo: 1.3.2
+      streamx: 2.28.0
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-buffer
+      - react-native-b4a
+
+  teex@1.0.1:
+    dependencies:
+      streamx: 2.28.0
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - react-native-b4a
+
+  text-decoder@1.2.7:
+    dependencies:
+      b4a: 1.8.1
+    transitivePeerDependencies:
+      - react-native-b4a
 
   thenify-all@1.6.0:
     dependencies:

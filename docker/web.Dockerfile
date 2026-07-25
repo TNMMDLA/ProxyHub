@@ -10,9 +10,11 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* tsconfig.base.json ./
 COPY release/version.json release/version.json
 COPY scripts/release/generate-version.mjs scripts/release/generate-version.mjs
 COPY apps/web/package.json apps/web/package.json
+COPY packages/diagnostics-core/package.json packages/diagnostics-core/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN pnpm install --filter @proxyhub/web... --frozen-lockfile
 COPY apps/web apps/web
+COPY packages/diagnostics-core packages/diagnostics-core
 COPY packages/shared packages/shared
 RUN node scripts/release/generate-version.mjs \
   && pnpm --filter @proxyhub/web... build
