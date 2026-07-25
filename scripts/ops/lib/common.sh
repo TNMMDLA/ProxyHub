@@ -10,7 +10,7 @@ readonly OPS_ROOT
 : "${PROXYHUB_STATE_DIR:=$OPS_ROOT/.proxyhub/state}"
 : "${PROXYHUB_BACKUP_DIR:=$OPS_ROOT/backups}"
 : "${PROXYHUB_ENV_FILE:=$OPS_ROOT/.env}"
-: "${PROXYHUB_COMPOSE_PROJECT:=proxyhub}"
+: "${PROXYHUB_COMPOSE_PROJECT:=${COMPOSE_PROJECT_NAME:-proxyhub}}"
 : "${PROXYHUB_COMPOSE_FILE:=$OPS_ROOT/docker-compose.yml}"
 : "${PROXYHUB_RELEASE_COMPOSE_FILE:=$OPS_ROOT/docker-compose.release.yml}"
 

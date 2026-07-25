@@ -45,6 +45,14 @@ describe('global lock contract', () => {
   });
 });
 
+describe('Compose project contract', () => {
+  it('inherits the conventional Compose project name for isolated runtimes', async () => {
+    expect(await source('scripts/ops/lib/common.sh')).toContain(
+      '${PROXYHUB_COMPOSE_PROJECT:=${COMPOSE_PROJECT_NAME:-proxyhub}}',
+    );
+  });
+});
+
 describe('health contract', () => {
   const cases = [
     ['five services', 'proxyhub-web proxyhub-server proxyhub-agent xray caddy'],
