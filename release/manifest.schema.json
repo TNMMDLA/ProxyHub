@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proxyhub.local/schemas/release-manifest-v1.json",
+  "title": "ProxyHub Release Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "releaseId",
+    "version",
+    "gitSha",
+    "gitShortSha",
+    "buildTime",
+    "buildEnvironment",
+    "deployMode",
+    "xrayVersion",
+    "databaseMigrationFingerprint",
+    "images"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "releaseId": {
+      "type": "string",
+      "pattern": "^[0-9A-Za-z][0-9A-Za-z._-]{2,127}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "gitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "gitShortSha": { "type": "string", "pattern": "^[0-9a-f]{12}$" },
+    "buildTime": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+    },
+    "buildEnvironment": {
+      "type": "string",
+      "enum": ["ci", "development", "production"]
+    },
+    "deployMode": { "type": "string", "enum": ["image", "source"] },
+    "xrayVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "databaseMigrationFingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["web", "server", "agent", "xray"],
+      "properties": {
+        "web": { "$ref": "#/$defs/image" },
+        "server": { "$ref": "#/$defs/image" },
+        "agent": { "$ref": "#/$defs/image" },
+        "xray": { "$ref": "#/$defs/image" }
+      }
+    }
+  },
+  "$defs": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "digest"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[a-z0-9.-]+(?:/[a-z0-9._-]+)+$"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$"
+        },
+        "digest": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

@@ -3,6 +3,7 @@ import { cpus, freemem, hostname, loadavg, totalmem, uptime } from 'node:os';
 import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import Fastify from 'fastify';
 import { z } from 'zod';
+import { PROXYHUB_RELEASE } from '@proxyhub/shared';
 import {
   restoreValidatedConfig,
   testXrayConfig,
@@ -79,7 +80,7 @@ app.get('/status', async () => {
   return {
     success: true,
     data: {
-      agent: { version: '0.3.0', hostname: hostname(), uptime: uptime() },
+      agent: { version: PROXYHUB_RELEASE.version, hostname: hostname(), uptime: uptime() },
       system: {
         cpuCount: cpus().length,
         load: loadavg()[0] ?? 0,

@@ -9,5 +9,8 @@ coverage/
 playwright-report/
 test-results/
 .tmp/
+artifacts/
+.proxyhub/
+backups/
 apps/server/data/
 apps/agent/data/

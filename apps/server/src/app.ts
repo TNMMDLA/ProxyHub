@@ -15,6 +15,7 @@ import { ruleSetRoutes } from './routes/rule-sets.js';
 import { config } from './config.js';
 import { AppError } from './errors.js';
 import { defaultAgentClient, type AgentClient } from './agent-client.js';
+import { getBuildMetadata } from './release/build-metadata.js';
 
 export function redactRequestUrl(url: string | undefined): string | undefined {
   return url?.replace(/(\/sub\/)[^/?#]+/g, '$1[REDACTED]');
@@ -86,7 +87,10 @@ export async function buildApp(options: { agentClient?: AgentClient; logFile?: s
     });
   });
 
-  app.get('/api/health', async () => ({ success: true, data: { status: 'ok', version: '0.3.0' } }));
+  app.get('/api/health', async () => ({
+    success: true,
+    data: { status: 'ok', ...(await getBuildMetadata()) },
+  }));
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(nodeRoutes, { prefix: '/api/nodes', agentClient });
   await app.register(poolRoutes, { prefix: '/api/node-pools' });

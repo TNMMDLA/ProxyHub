@@ -21,7 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import type { AgentStatusData } from '@proxyhub/shared';
+import type { AgentStatusData, ProxyHubHealthData } from '@proxyhub/shared';
 import { api } from '../api';
 import { useUiStore } from '../store';
 import type { Admin, NotificationRecord } from '../types';
@@ -84,6 +84,12 @@ export function AppShell({ admin }: { admin: Admin }) {
     queryKey: ['xray-status'],
     queryFn: () => api<AgentStatusData>('/xray/status'),
     refetchInterval: 15_000,
+    retry: false,
+  });
+  const releaseHealth = useQuery({
+    queryKey: ['health'],
+    queryFn: () => api<ProxyHubHealthData>('/health'),
+    staleTime: 60_000,
     retry: false,
   });
   const unread = notifications.data?.filter((item) => !item.readAt).length ?? 0;
@@ -150,7 +156,7 @@ export function AppShell({ admin }: { admin: Admin }) {
             <i />
             {systemLabel}
           </span>
-          <small>v0.3 · Open source</small>
+          <small>{releaseHealth.data?.version ?? 'Version unavailable'} · Open source</small>
         </div>
       </aside>
       {sidebarOpen ? (
@@ -201,7 +207,7 @@ export function AppShell({ admin }: { admin: Admin }) {
         <footer>
           <span>© 2026 ProxyHub · Open source under MIT License</span>
           <span>
-            <i /> API online <b>v0.3</b>
+            <i /> API online <b>{releaseHealth.data?.version ?? 'unknown'}</b>
           </span>
         </footer>
       </main>

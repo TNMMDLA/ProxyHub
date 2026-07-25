@@ -1,0 +1,35 @@
+name: proxyhub
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+services:
+  proxyhub-server:
+    build: null
+    image: ${PROXYHUB_SERVER_IMAGE:?Set PROXYHUB_SERVER_IMAGE to a manifest-pinned image}
+    environment:
+      PROXYHUB_DEPLOY_MODE: image
+    logging: *default-logging
+
+  proxyhub-web:
+    build: null
+    image: ${PROXYHUB_WEB_IMAGE:?Set PROXYHUB_WEB_IMAGE to a manifest-pinned image}
+    logging: *default-logging
+
+  proxyhub-agent:
+    build: null
+    image: ${PROXYHUB_AGENT_IMAGE:?Set PROXYHUB_AGENT_IMAGE to a manifest-pinned image}
+    environment:
+      PROXYHUB_DEPLOY_MODE: image
+    logging: *default-logging
+
+  xray:
+    build: null
+    image: ${PROXYHUB_XRAY_IMAGE:?Set PROXYHUB_XRAY_IMAGE to a manifest-pinned image}
+    logging: *default-logging
+
+  caddy:
+    logging: *default-logging

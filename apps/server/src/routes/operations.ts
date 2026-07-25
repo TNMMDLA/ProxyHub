@@ -4,6 +4,7 @@ import { requireRole } from '../auth/session.js';
 import { prisma } from '../db.js';
 import { audit } from '../audit.js';
 import type { AgentClient } from '../agent-client.js';
+import { PROXYHUB_RELEASE } from '@proxyhub/shared';
 
 export const operationRoutes: FastifyPluginAsync<{ agentClient: AgentClient }> = async (
   app,
@@ -45,7 +46,7 @@ export const operationRoutes: FastifyPluginAsync<{ agentClient: AgentClient }> =
           uptime: uptime(),
           memoryUsage,
           load: loadavg()[0] ?? 0,
-          version: '0.3.0',
+          version: PROXYHUB_RELEASE.version,
           xrayStatus: agentStatus?.xray.status ?? 'UNKNOWN',
         },
         servers,

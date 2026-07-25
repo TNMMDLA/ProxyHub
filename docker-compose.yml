@@ -39,13 +39,25 @@ services:
       retries: 8
       start_period: 15s
     networks: [proxyhub]
+    logging: &default-logging
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   proxyhub-web:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
     restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1/']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     networks: [proxyhub]
+    logging: *default-logging
 
   proxyhub-agent:
     build:
@@ -87,6 +99,7 @@ services:
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     networks: [proxyhub]
+    logging: *default-logging
 
   xray:
     build:
@@ -109,6 +122,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging: *default-logging
 
   caddy:
     image: caddy:2.10-alpine
@@ -124,7 +138,14 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     depends_on: [proxyhub-web, proxyhub-server]
+    healthcheck:
+      test: ['CMD', 'caddy', 'version']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     networks: [proxyhub]
+    logging: *default-logging
 
 volumes:
   proxyhub-data:

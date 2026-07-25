@@ -3,6 +3,7 @@ import { buildApp } from './app.js';
 import { config } from './config.js';
 import { prisma } from './db.js';
 import { startRuleSetScheduler } from './rule-set/scheduler.js';
+import { PROXYHUB_RELEASE } from '@proxyhub/shared';
 
 const app = await buildApp();
 const stopRuleSetScheduler = startRuleSetScheduler();
@@ -16,7 +17,7 @@ await prisma.server.upsert({
     hostname: hostname(),
     ip: '127.0.0.1',
     status: 'ONLINE',
-    agentVersion: '0.3.0',
+    agentVersion: PROXYHUB_RELEASE.version,
     lastHeartbeat: new Date(),
   },
 });

@@ -16,6 +16,7 @@ const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 const PolicyStudioPage = lazy(() => import('./pages/PolicyStudioPage'));
 const SubscriptionsPage = lazy(() => import('./pages/SubscriptionsPage'));
 const RuleSetsPage = lazy(() => import('./pages/RuleSetsPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 
 function ScreenLoader() {
   return (
@@ -121,7 +122,14 @@ export function App() {
             </Suspense>
           }
         />
-        <Route path="/settings" element={<Navigate to="/security" replace />} />
+        <Route
+          path="/settings"
+          element={
+            <Suspense fallback={<ScreenLoader />}>
+              <SettingsPage />
+            </Suspense>
+          }
+        />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>

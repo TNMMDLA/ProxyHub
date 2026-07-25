@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export { PROXYHUB_RELEASE } from './generated/release-version.js';
 
 export const roleSchema = z.enum(['ADMIN', 'OPERATOR', 'VIEWER']);
 export const nodeStatusSchema = z.enum(['HEALTHY', 'WARNING', 'OFFLINE', 'UNKNOWN']);
@@ -257,6 +258,23 @@ export interface AgentStatusData {
   agent: { version: string; hostname: string; uptime: number };
   system: { cpuCount: number; load: number; memoryUsage: number };
   xray: XrayHealthStatus;
+}
+
+export interface ProxyHubBuildMetadata {
+  version: string;
+  gitSha: string;
+  gitShortSha: string;
+  buildTime: string;
+  buildEnvironment: string;
+  deployMode: string;
+  xrayVersion: string;
+  database: {
+    migrationFingerprint: string;
+  };
+}
+
+export interface ProxyHubHealthData extends ProxyHubBuildMetadata {
+  status: 'ok';
 }
 
 export const EVENT_TYPES = [

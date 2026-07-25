@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Check, Eye, EyeOff, KeyRound, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { PROXYHUB_RELEASE } from '@proxyhub/shared';
 import { api, ApiError } from '../api';
 import { Brand } from '../components/AppShell';
 import { Button, Input, QueryErrorState } from '../components/ui';
@@ -69,7 +70,7 @@ export function AuthPage() {
             </li>
           </ul>
         </div>
-        <small>ProxyHub v0.3 · Pre-production</small>
+        <small>ProxyHub {PROXYHUB_RELEASE.version} · Pre-production</small>
       </section>
       <section className="auth-form-wrap">
         <form
