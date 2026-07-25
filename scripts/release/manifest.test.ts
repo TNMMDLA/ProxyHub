@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createReleaseManifest,
   migrationFingerprint,
+  parseArguments,
   readReleaseVersion,
   validateReleaseManifest,
 } from './manifest-lib.mjs';
@@ -69,5 +70,14 @@ describe('release version and manifest', () => {
     expect(() => {
       JSON.parse(version);
     }).not.toThrow();
+  });
+
+  it('accepts pnpm script argument delimiters', () => {
+    expect(
+      parseArguments(['--', '--manifest', 'artifacts/release-manifest.json', '--mode', 'release']),
+    ).toEqual({
+      manifest: 'artifacts/release-manifest.json',
+      mode: 'release',
+    });
   });
 });

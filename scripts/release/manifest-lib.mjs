@@ -97,7 +97,8 @@ export async function createReleaseManifest(options) {
 
 export function parseArguments(arguments_) {
   const result = {};
-  for (let index = 0; index < arguments_.length; index += 1) {
+  const firstArgument = arguments_[0] === '--' ? 1 : 0;
+  for (let index = firstArgument; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
     if (!argument?.startsWith('--')) throw new Error(`Unexpected argument: ${argument}`);
     const key = argument.slice(2);
