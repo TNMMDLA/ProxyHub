@@ -914,12 +914,20 @@ export class DiagnosticsService {
   }
 
   private async security(started: number): Promise<DiagnosticItem[]> {
-    const [admins, recentFailures] = await Promise.all([
-      this.database.adminUser.findMany({ select: { totpEnabled: true, role: true } }),
-      this.database.auditLog.count({
-        where: { result: 'FAILURE', createdAt: { gte: new Date(Date.now() - 86_400_000) } },
-      }),
-    ]);
+    const [admins, recentFailures, unreadNotifications, recentCriticalNotifications] =
+      await Promise.all([
+        this.database.adminUser.findMany({ select: { totpEnabled: true, role: true } }),
+        this.database.auditLog.count({
+          where: { result: 'FAILURE', createdAt: { gte: new Date(Date.now() - 86_400_000) } },
+        }),
+        this.database.notification.count({ where: { readAt: null } }),
+        this.database.notification.count({
+          where: {
+            level: 'CRITICAL',
+            createdAt: { gte: new Date(Date.now() - 86_400_000) },
+          },
+        }),
+      ]);
     const secureCookie = this.config.NODE_ENV === 'production';
     return [
       this.item(
@@ -942,6 +950,8 @@ export class DiagnosticsService {
             auditLoggingConfigured: true,
             encryptionConfigured: true,
             recentFailureAuditCount: recentFailures,
+            unreadNotificationCount: unreadNotifications,
+            recentCriticalNotificationCount: recentCriticalNotifications,
           },
           recommendations: secureCookie
             ? []

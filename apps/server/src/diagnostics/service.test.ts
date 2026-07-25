@@ -77,7 +77,7 @@ function fakeDatabase() {
       count: vi.fn(async () => 0),
     },
     adminUser: { findMany: vi.fn(async () => [{ totpEnabled: true, role: 'ADMIN' }]) },
-    notification: {},
+    notification: { count: vi.fn(async () => 0) },
   };
 }
 
@@ -294,6 +294,17 @@ describe('DiagnosticsService', () => {
     expect(
       report.items.find((entry) => entry.id === 'reality.compatibility.summary')?.details,
     ).toMatchObject({ automaticTestPerformed: false, persistedResultAvailable: false });
+  });
+  it('reports notification counts without returning notification content', async () => {
+    const { instance, database } = service();
+    database.notification.count.mockResolvedValueOnce(3).mockResolvedValueOnce(1);
+    const report = await instance.overview();
+    const item = report.items.find((entry) => entry.id === 'security.control.summary');
+    expect(item?.details).toMatchObject({
+      unreadNotificationCount: 3,
+      recentCriticalNotificationCount: 1,
+    });
+    expect(JSON.stringify(item)).not.toContain('message');
   });
   it('filters database sections', async () => {
     const report = await service().instance.section('DATABASE');
