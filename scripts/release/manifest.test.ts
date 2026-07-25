@@ -80,4 +80,16 @@ describe('release version and manifest', () => {
       mode: 'release',
     });
   });
+
+  it('derives the default GHCR namespace from the GitHub repository', async () => {
+    const previousRepository = process.env.GITHUB_REPOSITORY;
+    process.env.GITHUB_REPOSITORY = 'TNMMDLA/ProxyHub';
+    try {
+      const manifest = await createReleaseManifest({ gitSha, mode: 'dry-run' });
+      expect(manifest.images.server.repository).toBe('ghcr.io/tnmmdla/proxyhub-server');
+    } finally {
+      if (previousRepository === undefined) delete process.env.GITHUB_REPOSITORY;
+      else process.env.GITHUB_REPOSITORY = previousRepository;
+    }
+  });
 });

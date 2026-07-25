@@ -175,7 +175,9 @@ describe('release regression contract', () => {
     ['server SQLite CLI', 'apk add --no-cache sqlite'],
     ['log rotation', 'max-size: 10m'],
     ['health metadata', 'databaseMigrationFingerprint'],
+    ['dynamic GHCR namespace', 'GITHUB_REPOSITORY,,'],
     ['no latest tag', ':latest'],
+    ['no hard-coded GHCR namespace', 'ghcr.io/tnmmdla'],
   ] as const;
   it.each(cases)('protects %s', async (name, pattern) => {
     const contents = await Promise.all([
@@ -185,8 +187,9 @@ describe('release regression contract', () => {
       source('docker/agent.Dockerfile'),
       source('docker/xray.Dockerfile'),
       source('scripts/release/manifest-lib.mjs'),
+      source('.github/workflows/release.yml'),
     ]);
-    if (name === 'no latest tag') {
+    if (name === 'no latest tag' || name === 'no hard-coded GHCR namespace') {
       expect(contents.join('\n')).not.toContain(pattern);
     } else {
       expect(contents.join('\n')).toContain(pattern);

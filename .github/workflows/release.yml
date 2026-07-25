@@ -23,7 +23,6 @@ concurrency:
 env:
   NODE_VERSION: '24'
   PNPM_VERSION: '11.9.0'
-  IMAGE_PREFIX: ghcr.io/tnmmdla/proxyhub
 
 jobs:
   image-runtime:
@@ -50,6 +49,7 @@ jobs:
           set -Eeuo pipefail
           version="$(jq -r '.version' release/version.json)"
           short_sha="${GITHUB_SHA:0:12}"
+          image_prefix="ghcr.io/${GITHUB_REPOSITORY,,}"
           publish=false
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tag="${GITHUB_REF_NAME}"
@@ -69,8 +69,10 @@ jobs:
             echo "version=$version"
             echo "tag=$tag"
             echo "publish=$publish"
+            echo "image_prefix=$image_prefix"
             echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >>"$GITHUB_OUTPUT"
+          echo "IMAGE_PREFIX=$image_prefix" >>"$GITHUB_ENV"
       - name: Validate release tooling and Shell contracts
         run: |
           pnpm release:check-version
@@ -92,7 +94,7 @@ jobs:
           file: docker/web.Dockerfile
           push: ${{ steps.meta.outputs.publish == 'true' }}
           load: ${{ steps.meta.outputs.publish != 'true' }}
-          tags: ${{ env.IMAGE_PREFIX }}-web:${{ steps.meta.outputs.tag }}
+          tags: ${{ steps.meta.outputs.image_prefix }}-web:${{ steps.meta.outputs.tag }}
           build-args: |
             PROXYHUB_VERSION=${{ steps.meta.outputs.version }}
             VCS_REF=${{ github.sha }}
@@ -109,7 +111,7 @@ jobs:
           file: docker/server.Dockerfile
           push: ${{ steps.meta.outputs.publish == 'true' }}
           load: ${{ steps.meta.outputs.publish != 'true' }}
-          tags: ${{ env.IMAGE_PREFIX }}-server:${{ steps.meta.outputs.tag }}
+          tags: ${{ steps.meta.outputs.image_prefix }}-server:${{ steps.meta.outputs.tag }}
           build-args: |
             PROXYHUB_VERSION=${{ steps.meta.outputs.version }}
             VCS_REF=${{ github.sha }}
@@ -126,7 +128,7 @@ jobs:
           file: docker/agent.Dockerfile
           push: ${{ steps.meta.outputs.publish == 'true' }}
           load: ${{ steps.meta.outputs.publish != 'true' }}
-          tags: ${{ env.IMAGE_PREFIX }}-agent:${{ steps.meta.outputs.tag }}
+          tags: ${{ steps.meta.outputs.image_prefix }}-agent:${{ steps.meta.outputs.tag }}
           build-args: |
             PROXYHUB_VERSION=${{ steps.meta.outputs.version }}
             VCS_REF=${{ github.sha }}
@@ -144,7 +146,7 @@ jobs:
           file: docker/xray.Dockerfile
           push: ${{ steps.meta.outputs.publish == 'true' }}
           load: ${{ steps.meta.outputs.publish != 'true' }}
-          tags: ${{ env.IMAGE_PREFIX }}-xray:${{ steps.meta.outputs.tag }}
+          tags: ${{ steps.meta.outputs.image_prefix }}-xray:${{ steps.meta.outputs.tag }}
           build-args: |
             PROXYHUB_VERSION=${{ steps.meta.outputs.version }}
             VCS_REF=${{ github.sha }}

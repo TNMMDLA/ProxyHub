@@ -66,7 +66,13 @@ export async function createReleaseManifest(options) {
   const gitSha = options.gitSha.toLowerCase();
   const tag = options.tag ?? `${release.version}-${gitSha.slice(0, 12)}`;
   const buildTime = new Date(options.buildTime ?? Date.now()).toISOString();
-  const imagePrefix = (options.imagePrefix ?? 'ghcr.io/tnmmdla/proxyhub').toLowerCase();
+  const repository = process.env.GITHUB_REPOSITORY?.toLowerCase();
+  const defaultImagePrefix = repository ? `ghcr.io/${repository}` : 'ghcr.io/example/proxyhub';
+  const imagePrefix = (
+    options.imagePrefix ??
+    process.env.PROXYHUB_IMAGE_PREFIX ??
+    defaultImagePrefix
+  ).toLowerCase();
   const image = (name) => ({
     repository: `${imagePrefix}-${name}`,
     tag,
