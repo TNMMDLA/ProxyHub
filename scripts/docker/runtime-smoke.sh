@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-services=(xray proxyhub-agent proxyhub-server)
+services=(xray proxyhub-agent proxyhub-server proxyhub-web caddy)
 deadline=$((SECONDS + 150))
 
 while (( SECONDS < deadline )); do
@@ -46,7 +46,27 @@ for service in "${services[@]}"; do
 done
 
 docker compose exec -T proxyhub-server node -e \
-  "fetch('http://127.0.0.1:3000/api/health').then(async response => { const body = await response.json(); if (!response.ok || body?.success !== true || body?.data?.status !== 'ok') process.exit(1); console.log(JSON.stringify(body)); }).catch(error => { console.error(error); process.exit(1); })"
+  "fetch('http://127.0.0.1:3000/api/health').then(async response => { const body = await response.json(); const d=body?.data; if (!response.ok || body?.success !== true || d?.status !== 'ok' || typeof d?.version !== 'string' || typeof d?.gitSha !== 'string' || typeof d?.buildTime !== 'string' || d?.xrayVersion !== '26.5.9' || !/^[0-9a-f]{64}$/.test(d?.database?.migrationFingerprint ?? '')) process.exit(1); console.log(JSON.stringify(body)); }).catch(error => { console.error(error); process.exit(1); })"
+
+docker compose exec -T proxyhub-server sqlite3 --version
+database_integrity="$(
+  docker compose exec -T proxyhub-server sqlite3 /app/data/proxyhub.db 'PRAGMA integrity_check;'
+)"
+if [[ "$database_integrity" != "ok" ]]; then
+  echo "Runtime SQLite integrity check failed: $database_integrity" >&2
+  exit 1
+fi
+
+for service in "${services[@]}"; do
+  container_id="$(docker compose ps -q --all "$service")"
+  log_driver="$(docker inspect --format '{{.HostConfig.LogConfig.Type}}' "$container_id")"
+  max_size="$(docker inspect --format '{{index .HostConfig.LogConfig.Config "max-size"}}' "$container_id")"
+  max_file="$(docker inspect --format '{{index .HostConfig.LogConfig.Config "max-file"}}' "$container_id")"
+  if [[ "$log_driver" != "json-file" || "$max_size" != "10m" || "$max_file" != "3" ]]; then
+    echo "$service log rotation is invalid: $log_driver $max_size $max_file" >&2
+    exit 1
+  fi
+done
 
 docker compose exec -T -w /app/apps/agent proxyhub-agent node --input-type=module \
   < scripts/runtime/verify-xray-lifecycle.mjs

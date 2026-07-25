@@ -1,0 +1,337 @@
+name: Release images and production runtime regression
+
+on:
+  push:
+    branches: [v0.3.1-stabilization]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_dev:
+        description: Publish immutable dev-SHA images to GHCR
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+  PNPM_VERSION: '11.9.0'
+  IMAGE_PREFIX: ghcr.io/tnmmdla/proxyhub
+
+jobs:
+  image-runtime:
+    name: Immutable images, manifest and five-service runtime smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y sqlite3 jq shellcheck
+      - uses: docker/setup-buildx-action@v3
+      - name: Resolve immutable build identity
+        id: meta
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          version="$(jq -r '.version' release/version.json)"
+          short_sha="${GITHUB_SHA:0:12}"
+          publish=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF_NAME}"
+            expected_version="${GITHUB_REF_NAME#v}"
+            if [[ "$version" != "$expected_version" ]]; then
+              echo "Tag $GITHUB_REF_NAME does not match canonical version $version" >&2
+              exit 1
+            fi
+            publish=true
+          else
+            tag="${version}-${short_sha}"
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "${{ inputs.publish_dev }}" == "true" ]]; then
+            publish=true
+          fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "publish=$publish"
+            echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >>"$GITHUB_OUTPUT"
+      - name: Validate release tooling and Shell contracts
+        run: |
+          pnpm release:check-version
+          pnpm test:manifest
+          pnpm test:ops
+          pnpm lint:shell
+      - name: Authenticate GHCR for publish
+        if: steps.meta.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Web image
+        id: web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/web.Dockerfile
+          push: ${{ steps.meta.outputs.publish == 'true' }}
+          load: ${{ steps.meta.outputs.publish != 'true' }}
+          tags: ${{ env.IMAGE_PREFIX }}-web:${{ steps.meta.outputs.tag }}
+          build-args: |
+            PROXYHUB_VERSION=${{ steps.meta.outputs.version }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.build_time }}
+            BUILD_ENVIRONMENT=ci
+            DEPLOY_MODE=image
+          cache-from: type=gha,scope=proxyhub-web
+          cache-to: type=gha,mode=max,scope=proxyhub-web
+      - name: Build Server image
+        id: server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/server.Dockerfile
+          push: ${{ steps.meta.outputs.publish == 'true' }}
+          load: ${{ steps.meta.outputs.publish != 'true' }}
+          tags: ${{ env.IMAGE_PREFIX }}-server:${{ steps.meta.outputs.tag }}
+          build-args: |
+            PROXYHUB_VERSION=${{ steps.meta.outputs.version }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.build_time }}
+            BUILD_ENVIRONMENT=ci
+            DEPLOY_MODE=image
+          cache-from: type=gha,scope=proxyhub-server
+          cache-to: type=gha,mode=max,scope=proxyhub-server
+      - name: Build Agent image
+        id: agent
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/agent.Dockerfile
+          push: ${{ steps.meta.outputs.publish == 'true' }}
+          load: ${{ steps.meta.outputs.publish != 'true' }}
+          tags: ${{ env.IMAGE_PREFIX }}-agent:${{ steps.meta.outputs.tag }}
+          build-args: |
+            PROXYHUB_VERSION=${{ steps.meta.outputs.version }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.build_time }}
+            BUILD_ENVIRONMENT=ci
+            DEPLOY_MODE=image
+            XRAY_CORE_VERSION=26.5.9
+          cache-from: type=gha,scope=proxyhub-agent
+          cache-to: type=gha,mode=max,scope=proxyhub-agent
+      - name: Build Xray runtime image
+        id: xray
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/xray.Dockerfile
+          push: ${{ steps.meta.outputs.publish == 'true' }}
+          load: ${{ steps.meta.outputs.publish != 'true' }}
+          tags: ${{ env.IMAGE_PREFIX }}-xray:${{ steps.meta.outputs.tag }}
+          build-args: |
+            PROXYHUB_VERSION=${{ steps.meta.outputs.version }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.build_time }}
+            XRAY_CORE_VERSION=26.5.9
+          cache-from: type=gha,scope=proxyhub-xray
+          cache-to: type=gha,mode=max,scope=proxyhub-xray
+      - name: Resolve image digests and generate release manifest
+        id: manifest
+        shell: bash
+        env:
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+          SERVER_DIGEST: ${{ steps.server.outputs.digest }}
+          AGENT_DIGEST: ${{ steps.agent.outputs.digest }}
+          XRAY_DIGEST: ${{ steps.xray.outputs.digest }}
+        run: |
+          set -Eeuo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+          resolve_digest() {
+            local provided="$1"
+            local image="$2"
+            if [[ -n "$provided" ]]; then
+              printf '%s\n' "$provided"
+            else
+              docker image inspect --format '{{.Id}}' "$image"
+            fi
+          }
+          web_digest="$(resolve_digest "$WEB_DIGEST" "$IMAGE_PREFIX-web:$tag")"
+          server_digest="$(resolve_digest "$SERVER_DIGEST" "$IMAGE_PREFIX-server:$tag")"
+          agent_digest="$(resolve_digest "$AGENT_DIGEST" "$IMAGE_PREFIX-agent:$tag")"
+          xray_digest="$(resolve_digest "$XRAY_DIGEST" "$IMAGE_PREFIX-xray:$tag")"
+          pnpm release:manifest -- \
+            --output artifacts/release-manifest.json \
+            --git-sha "$GITHUB_SHA" \
+            --build-time "${{ steps.meta.outputs.build_time }}" \
+            --environment ci \
+            --deploy-mode image \
+            --image-prefix "$IMAGE_PREFIX" \
+            --tag "$tag" \
+            --mode release \
+            --web-digest "$web_digest" \
+            --server-digest "$server_digest" \
+            --agent-digest "$agent_digest" \
+            --xray-digest "$xray_digest"
+          pnpm release:manifest:validate -- \
+            --manifest artifacts/release-manifest.json \
+            --mode release
+          {
+            echo "web_digest=$web_digest"
+            echo "server_digest=$server_digest"
+            echo "agent_digest=$agent_digest"
+            echo "xray_digest=$xray_digest"
+          } >>"$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proxyhub-release-manifest-${{ github.sha }}
+          path: artifacts/release-manifest.json
+          if-no-files-found: error
+      - name: Prepare isolated release Compose environment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+          if [[ "${{ steps.meta.outputs.publish }}" == "true" ]]; then
+            web="$IMAGE_PREFIX-web@${{ steps.manifest.outputs.web_digest }}"
+            server="$IMAGE_PREFIX-server@${{ steps.manifest.outputs.server_digest }}"
+            agent="$IMAGE_PREFIX-agent@${{ steps.manifest.outputs.agent_digest }}"
+            xray="$IMAGE_PREFIX-xray@${{ steps.manifest.outputs.xray_digest }}"
+          else
+            web="$IMAGE_PREFIX-web:$tag"
+            server="$IMAGE_PREFIX-server:$tag"
+            agent="$IMAGE_PREFIX-agent:$tag"
+            xray="$IMAGE_PREFIX-xray:$tag"
+          fi
+          cat >.env <<EOF
+          PANEL_DOMAIN=localhost
+          WEB_ORIGIN=https://localhost
+          ENCRYPTION_KEY=ci-release-runtime-encryption-key-32-bytes
+          AGENT_TOKEN=ci-release-runtime-agent-token
+          DATABASE_URL=file:/app/data/proxyhub.db
+          TRUST_PROXY=true
+          PROXYHUB_WEB_IMAGE=$web
+          PROXYHUB_SERVER_IMAGE=$server
+          PROXYHUB_AGENT_IMAGE=$agent
+          PROXYHUB_XRAY_IMAGE=$xray
+          EOF
+          echo "COMPOSE_PROJECT_NAME=proxyhub-release-${GITHUB_RUN_ID}" >>"$GITHUB_ENV"
+          echo "COMPOSE_FILE=$GITHUB_WORKSPACE/docker-compose.yml:$GITHUB_WORKSPACE/docker-compose.release.yml" >>"$GITHUB_ENV"
+      - name: Pull published immutable images
+        if: steps.meta.outputs.publish == 'true'
+        run: docker compose pull proxyhub-web proxyhub-server proxyhub-agent xray
+      - name: Start all five production services
+        run: docker compose up -d
+      - name: Verify runtime, metadata, SQLite and log rotation
+        run: bash scripts/docker/runtime-smoke.sh
+      - name: Exercise backup and dry-run operations in isolated state
+        shell: bash
+        env:
+          PROXYHUB_STATE_DIR: ${{ github.workspace }}/.tmp/runtime-state
+          PROXYHUB_BACKUP_DIR: ${{ github.workspace }}/.tmp/runtime-backups
+          PROXYHUB_SKIP_REMOTE_IMAGE_CHECK: 'true'
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$PROXYHUB_STATE_DIR/releases/history" "$PROXYHUB_STATE_DIR/releases/manifests"
+          chmod 0700 "$PROXYHUB_STATE_DIR" "$PROXYHUB_STATE_DIR/releases" \
+            "$PROXYHUB_STATE_DIR/releases/history" "$PROXYHUB_STATE_DIR/releases/manifests"
+          manifest="$GITHUB_WORKSPACE/artifacts/release-manifest.json"
+          release_id="$(jq -r '.releaseId' "$manifest")"
+          stored="$PROXYHUB_STATE_DIR/releases/manifests/$release_id.json"
+          cp "$manifest" "$stored"
+          jq --arg manifestPath "$stored" --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+            {
+              releaseId,version,gitSha,manifestPath:$manifestPath,deployMode,
+              imageDigests:{
+                web:.images.web.digest,server:.images.server.digest,
+                agent:.images.agent.digest,xray:.images.xray.digest
+              },
+              databaseMigrationFingerprint,
+              deployedAt:$deployedAt,
+              transactionId:"runtime-fixture"
+            }' "$manifest" >"$PROXYHUB_STATE_DIR/releases/current.json"
+          cp "$PROXYHUB_STATE_DIR/releases/current.json" \
+            "$PROXYHUB_STATE_DIR/releases/history/$release_id.json"
+          backup_path="$(scripts/ops/backup.sh create --yes)"
+          scripts/ops/backup.sh verify --archive "$backup_path"
+          scripts/ops/backup.sh list --json | jq -e '.success and (.backups | length == 1)'
+          scripts/ops/backup.sh prune --count 1 --days 30 --dry-run --json |
+            jq -e '.success and .dryRun'
+
+          jq '
+            .version="0.3.2-dev" |
+            .gitSha=("3"*40) |
+            .gitShortSha=("3"*12) |
+            .releaseId=("0.3.2-dev-" + ("3"*12) + "-fixture")
+          ' "$manifest" >.tmp/update-manifest.json
+          pnpm release:manifest:validate -- --manifest .tmp/update-manifest.json --mode release
+          scripts/ops/deploy.sh --manifest "$manifest" --dry-run --yes
+          scripts/ops/update.sh --manifest .tmp/update-manifest.json --dry-run --yes
+
+          jq '
+            .version="0.3.0" |
+            .gitSha=("0"*40) |
+            .gitShortSha=("0"*12) |
+            .releaseId=("0.3.0-" + ("0"*12) + "-fixture")
+          ' "$manifest" >.tmp/previous-manifest.json
+          previous_id="$(jq -r '.releaseId' .tmp/previous-manifest.json)"
+          previous_manifest="$PROXYHUB_STATE_DIR/releases/manifests/$previous_id.json"
+          cp .tmp/previous-manifest.json "$previous_manifest"
+          jq \
+            --arg releaseId "$previous_id" \
+            --arg version "0.3.0" \
+            --arg manifestPath "$previous_manifest" \
+            '.releaseId=$releaseId | .version=$version | .manifestPath=$manifestPath' \
+            "$PROXYHUB_STATE_DIR/releases/current.json" \
+            >"$PROXYHUB_STATE_DIR/releases/history/$previous_id.json"
+          scripts/ops/rollback.sh --to "$previous_id" --dry-run --yes
+      - name: Simulate failed update without changing current state or SQLite data
+        shell: bash
+        env:
+          PROXYHUB_STATE_DIR: ${{ github.workspace }}/.tmp/runtime-state
+          PROXYHUB_BACKUP_DIR: ${{ github.workspace }}/.tmp/runtime-backups
+          PROXYHUB_SKIP_REMOTE_IMAGE_CHECK: 'true'
+        run: |
+          set -Eeuo pipefail
+          state_before="$(sha256sum "$PROXYHUB_STATE_DIR/releases/current.json" | awk '{print $1}')"
+          rows_before="$(docker compose exec -T proxyhub-server sqlite3 /app/data/proxyhub.db \
+            'SELECT count(*) FROM _prisma_migrations;')"
+          jq '.images |= with_entries(.value.repository=("invalid.invalid/proxyhub-" + .key))' \
+            .tmp/update-manifest.json >.tmp/failing-update-manifest.json
+          if scripts/ops/update.sh --manifest .tmp/failing-update-manifest.json --yes; then
+            echo "Expected simulated update to fail" >&2
+            exit 1
+          fi
+          state_after="$(sha256sum "$PROXYHUB_STATE_DIR/releases/current.json" | awk '{print $1}')"
+          rows_after="$(docker compose exec -T proxyhub-server sqlite3 /app/data/proxyhub.db \
+            'SELECT count(*) FROM _prisma_migrations;')"
+          [[ "$state_before" == "$state_after" ]]
+          [[ "$rows_before" == "$rows_after" ]]
+          bash scripts/docker/runtime-smoke.sh
+      - name: Capture isolated diagnostics
+        if: always()
+        run: |
+          docker compose ps --all
+          docker compose logs --no-color --tail=300 || true
+          find .tmp -maxdepth 4 -type f -print 2>/dev/null || true
+      - name: Remove isolated runtime
+        if: always()
+        run: |
+          docker compose down --volumes --remove-orphans || true
+          rm -rf .tmp .env
