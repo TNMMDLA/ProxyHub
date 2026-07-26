@@ -8,7 +8,7 @@ ProxyHub is a modern, open-source proxy infrastructure management platform for L
 >
 > - Phase 1 — Release and Operations Foundation: **Code and CI Complete; VPS Deployment Pending**.
 > - Phase 2 — Diagnostics Center and Runtime Observability: **Code and CI Complete; VPS Deployment Pending**.
-> - Phase 3 — Guided Workflow, Subscription Readiness, Client Delivery, and Localization: **Code Complete; CI and VPS Deployment Pending; Real Client Import Verification Pending**.
+> - Phase 3 — Guided Workflow, Subscription Readiness, Client Delivery, and Localization: **Code and CI Complete; VPS Deployment Pending; Real Client Import Verification Pending**.
 > - Reality Target Compatibility Hotfix: **Code and CI Verified; VPS Verification Pending**.
 
 ### V0.1.1 implementation notes
