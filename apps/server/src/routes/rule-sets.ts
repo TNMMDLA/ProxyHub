@@ -596,6 +596,9 @@ export const ruleSetRoutes: FastifyPluginAsync = async (app) => {
     const id = idFrom(request);
     const ruleSet = await findRuleSet(id);
     if (ruleSet.policyRules.length > 0) {
+      await audit(request, 'DELETE_BLOCKED_BY_DEPENDENCY', 'RuleSet', 'FAILURE', id, {
+        codes: ['POLICY_WOULD_LOSE_RULE_SET'],
+      });
       throw new AppError('RULE_SET_IN_USE', 'Rule set is used by policies', 409, {
         policies: ruleSet.policyRules.map(({ policy }) => policy),
       });

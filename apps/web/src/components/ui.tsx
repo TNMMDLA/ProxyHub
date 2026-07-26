@@ -5,6 +5,8 @@ import type {
   ReactNode,
 } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { ApiError } from '../api';
 
 export function Button({
   className = '',
@@ -31,10 +33,13 @@ export function Input({
 }
 
 export function Status({ value }: { value: string }) {
+  const { t } = useTranslation('common');
   return (
     <span className={`status status-${value.toLowerCase()}`}>
       <i />
-      {value.charAt(0) + value.slice(1).toLowerCase()}
+      {t(`statusLabels.${value}`, {
+        defaultValue: value.charAt(0) + value.slice(1).toLowerCase(),
+      })}
     </span>
   );
 }
@@ -66,6 +71,7 @@ export function Modal({
   onClose,
   children,
 }: PropsWithChildren<{ title: string; description?: string; onClose: () => void }>) {
+  const { t } = useTranslation('common');
   return (
     <div
       className="modal-backdrop"
@@ -80,7 +86,7 @@ export function Modal({
             <h2 id="modal-title">{title}</h2>
             {description ? <p>{description}</p> : null}
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="Close">
+          <button className="icon-button" onClick={onClose} aria-label={t('close')}>
             <X size={18} />
           </button>
         </header>
@@ -119,17 +125,24 @@ export function QueryErrorState({
   onRetry: () => void;
   fullPage?: boolean;
 }) {
+  const { t } = useTranslation(['errors', 'common']);
+  const message =
+    error instanceof ApiError
+      ? t(`errors:${error.code}`, { defaultValue: error.message })
+      : error instanceof Error
+        ? error.message
+        : t('errors:unexpected');
   return (
     <section className={fullPage ? 'query-error full-page-error' : 'query-error'}>
       <div className="empty-icon">
         <X size={25} />
       </div>
-      <h2>Unable to load this view</h2>
-      <p>{error instanceof Error ? error.message : 'An unexpected application error occurred.'}</p>
+      <h2>{t('errors:viewTitle')}</h2>
+      <p>{message}</p>
       <div className="query-error-actions">
-        <Button onClick={onRetry}>Retry</Button>
+        <Button onClick={onRetry}>{t('common:retry')}</Button>
         <Button variant="secondary" onClick={() => window.location.assign('/dashboard')}>
-          Return to Dashboard
+          {t('common:returnDashboard')}
         </Button>
       </div>
     </section>

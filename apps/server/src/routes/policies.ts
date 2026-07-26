@@ -178,6 +178,9 @@ export const policyRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!policy) throw new AppError('POLICY_NOT_FOUND', 'Policy not found', 404);
     if (policy._count.subscriptions > 0) {
+      await audit(request, 'DELETE_BLOCKED_BY_DEPENDENCY', 'Policy', 'FAILURE', id, {
+        codes: ['SUBSCRIPTION_WOULD_LOSE_POLICY'],
+      });
       throw new AppError('POLICY_IN_USE', 'Policy is used by subscriptions', 409, {
         subscriptions: policy._count.subscriptions,
       });

@@ -1,11 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, CheckCheck, Search, ScrollText } from 'lucide-react';
-import { api, formatRelative } from '../api';
+import { api } from '../api';
 import { Button, EmptyState, PageHeader, QueryErrorState, Status } from '../components/ui';
 import type { AuditRecord, NotificationRecord } from '../types';
+import { useTranslation } from 'react-i18next';
+import { formatRelativeTime } from '../i18n/formatters';
+import type { SupportedLocale } from '../i18n';
 
 export default function ActivityPage({ mode }: { mode: 'notifications' | 'audit' }) {
+  const { t, i18n } = useTranslation(['activity', 'common']);
+  const locale: SupportedLocale = i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en';
   const client = useQueryClient();
   const [search, setSearch] = useState('');
   const isNotifications = mode === 'notifications';
@@ -37,17 +42,15 @@ export default function ActivityPage({ mode }: { mode: 'notifications' | 'audit'
   return (
     <>
       <PageHeader
-        title={isNotifications ? 'Notifications' : 'Audit Logs'}
+        title={isNotifications ? t('activity:notifications') : t('activity:auditLogs')}
         description={
-          isNotifications
-            ? 'Operational events and security signals in one searchable stream.'
-            : 'Immutable visibility into every important administrative operation.'
+          isNotifications ? t('activity:notificationsDescription') : t('activity:auditDescription')
         }
         actions={
           isNotifications ? (
             <Button variant="secondary" onClick={() => readAll.mutate()}>
               <CheckCheck size={16} />
-              Mark all read
+              {t('activity:markAllRead')}
             </Button>
           ) : undefined
         }
@@ -58,10 +61,10 @@ export default function ActivityPage({ mode }: { mode: 'notifications' | 'audit'
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={
-            isNotifications ? 'Search notifications...' : 'Search actor, action or resource...'
+            isNotifications ? t('activity:searchNotifications') : t('activity:searchAudit')
           }
         />
-        <span>{records.length} records</span>
+        <span>{t('activity:records', { count: records.length })}</span>
       </div>
       {records.length ? (
         isNotifications ? (
@@ -77,12 +80,12 @@ export default function ActivityPage({ mode }: { mode: 'notifications' | 'audit'
                     <Status value={item.level} />
                     {!item.readAt ? (
                       <button className="notice-read" onClick={() => markRead.mutate(item.id)}>
-                        Mark read
+                        {t('activity:markRead')}
                       </button>
                     ) : null}
                   </div>
                   <p>{item.message}</p>
-                  <time>{formatRelative(item.createdAt)}</time>
+                  <time>{formatRelativeTime(item.createdAt, locale)}</time>
                 </div>
               </article>
             ))}
@@ -93,18 +96,18 @@ export default function ActivityPage({ mode }: { mode: 'notifications' | 'audit'
               <table>
                 <thead>
                   <tr>
-                    <th>Time</th>
-                    <th>Actor</th>
-                    <th>Action</th>
-                    <th>Resource</th>
-                    <th>IP address</th>
-                    <th>Result</th>
+                    <th>{t('activity:time')}</th>
+                    <th>{t('activity:actor')}</th>
+                    <th>{t('activity:action')}</th>
+                    <th>{t('activity:resource')}</th>
+                    <th>{t('activity:ipAddress')}</th>
+                    <th>{t('activity:result')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(records as AuditRecord[]).map((item) => (
                     <tr key={item.id}>
-                      <td>{formatRelative(item.createdAt)}</td>
+                      <td>{formatRelativeTime(item.createdAt, locale)}</td>
                       <td>
                         <b>{item.actorName}</b>
                       </td>
@@ -124,8 +127,8 @@ export default function ActivityPage({ mode }: { mode: 'notifications' | 'audit'
       ) : (
         <EmptyState
           icon={isNotifications ? <Bell /> : <ScrollText />}
-          title={isNotifications ? 'No notifications' : 'No audit activity'}
-          body="Events will appear here as the platform is used."
+          title={isNotifications ? t('activity:noNotifications') : t('activity:noAudit')}
+          body={t('activity:empty')}
         />
       )}
     </>

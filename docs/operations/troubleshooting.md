@@ -10,3 +10,14 @@
 - `DIAGNOSTICS_SCAN_TIMEOUT`: retry after load decreases and inspect the affected component directly.
 
 No troubleshooting action in the web page mutates the runtime. Use the documented Phase 1 operations CLI for deploy, update, rollback, and backup actions.
+
+# Phase 3 guided delivery
+
+When a subscription is blocked, run its Readiness check and follow the stable stage and error code.
+Use `/diagnostics?tab=subscriptions` for subscription failures, `?tab=rule-sets` for Rule Set
+problems, and the Nodes Reality Compatibility panel for target errors.
+
+Configuration Preview is deliberately sanitized. Use the existing controlled node Share function
+only when an administrator needs an unredacted single-node URI. If Preview is truncated, reduce
+the selected nodes/rules or inspect the compiler diagnostics; do not raise limits on a low-resource
+VPS without measuring memory use.

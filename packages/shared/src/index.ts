@@ -68,6 +68,14 @@ export const policyMatchTypeSchema = z.enum([
   'NETWORK',
 ]);
 export const subscriptionFormatSchema = z.enum(['mihomo', 'sing-box', 'raw']);
+export const resourceTypeSchema = z.enum([
+  'SERVER',
+  'NODE',
+  'NODE_POOL',
+  'POLICY',
+  'RULE_SET',
+  'SUBSCRIPTION',
+]);
 export const policyMatchSourceSchema = z.enum(['INLINE', 'RULE_SET']);
 export const ruleSetSourceTypeSchema = z.enum(['MANUAL', 'REMOTE']);
 export const ruleSetFormatSchema = z.enum(['AUTO', 'PROXYHUB_NATIVE', 'PLAIN_TEXT', 'MIHOMO']);
@@ -206,6 +214,116 @@ export const createSubscriptionSchema = subscriptionBaseSchema
     expiresAt: z.string().datetime({ offset: true }).nullable().default(null),
   });
 export const updateSubscriptionSchema = subscriptionBaseSchema.partial();
+export const subscriptionReadinessInputSchema = subscriptionBaseSchema.partial({
+  name: true,
+  enabled: true,
+  expiresAt: true,
+});
+export const subscriptionPreviewSchema = z.object({
+  format: subscriptionFormatSchema.optional(),
+});
+
+export type ResourceType = z.infer<typeof resourceTypeSchema>;
+export type DependencyRelationCode =
+  | 'SERVER_HAS_NODE'
+  | 'NODE_IN_NODE_POOL'
+  | 'NODE_POOL_USED_BY_POLICY'
+  | 'RULE_SET_USED_BY_POLICY'
+  | 'POLICY_USED_BY_SUBSCRIPTION';
+
+export interface ResourceReference {
+  resourceType: ResourceType;
+  resourceId: string;
+  name: string;
+  relation: DependencyRelationCode;
+  direct: boolean;
+}
+
+export interface ResourceDependencyResult {
+  resourceType: ResourceType;
+  resourceId: string;
+  usedBy: ResourceReference[];
+  truncated: boolean;
+}
+
+export type DeleteImpactStatus = 'SAFE' | 'WARNING' | 'BLOCKED';
+
+export interface DeleteImpactResult extends ResourceDependencyResult {
+  status: DeleteImpactStatus;
+  codes: string[];
+  impacts: Array<{
+    code: string;
+    severity: 'WARNING' | 'BLOCKING';
+    resourceType: ResourceType;
+    resourceId: string;
+    name: string;
+  }>;
+}
+
+export type SetupStepStatus =
+  'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED' | 'WARNING' | 'NOT_APPLICABLE';
+
+export interface SetupProgressStep {
+  id:
+    | 'add-server'
+    | 'create-node'
+    | 'validate-reality'
+    | 'create-node-pool'
+    | 'create-policy'
+    | 'add-rule-set'
+    | 'create-subscription'
+    | 'check-readiness'
+    | 'import-client';
+  status: SetupStepStatus;
+  targetRoute: string;
+  blockingCodes: string[];
+}
+
+export interface SetupProgressResult {
+  overallStatus: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED' | 'WARNING';
+  completedSteps: number;
+  totalSteps: number;
+  steps: SetupProgressStep[];
+  generatedAt: string;
+}
+
+export type SubscriptionReadinessStatus = 'READY' | 'READY_WITH_WARNINGS' | 'BLOCKED' | 'UNKNOWN';
+export type ReadinessCheckStatus = 'PASSED' | 'WARNING' | 'FAILED' | 'UNKNOWN';
+export type CompileStage =
+  | 'DEPENDENCY_RESOLUTION'
+  | 'CAPABILITY_CHECK'
+  | 'RULE_SET_RESOLUTION'
+  | 'NODE_RESOLUTION'
+  | 'POLICY_VALIDATION'
+  | 'COMPILER'
+  | 'SERIALIZATION'
+  | 'OUTPUT_VALIDATION';
+
+export interface SubscriptionReadinessCheck {
+  id: string;
+  status: ReadinessCheckStatus;
+  titleCode: string;
+  summaryCode: string;
+  resourceType?: ResourceType | 'POLICY_RULE' | undefined;
+  resourceId?: string | undefined;
+  resourceName?: string | undefined;
+  field?: string | undefined;
+  errorCode?: string | undefined;
+  recommendations: string[];
+  blocking: boolean;
+  stage: CompileStage;
+}
+
+export interface SubscriptionReadinessResult {
+  status: SubscriptionReadinessStatus;
+  subscriptionId?: string;
+  format?: z.infer<typeof subscriptionFormatSchema>;
+  checks: SubscriptionReadinessCheck[];
+  blockingCount: number;
+  warningCount: number;
+  checkedAt: string;
+  durationMs: number;
+}
 
 export const bootstrapSchema = z.object({
   username: z

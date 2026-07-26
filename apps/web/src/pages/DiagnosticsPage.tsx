@@ -11,7 +11,7 @@ import {
   ScanSearch,
   ShieldQuestion,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type {
   DiagnosticCategory,
   DiagnosticItem,
@@ -20,17 +20,18 @@ import type {
 } from '@proxyhub/diagnostics-core';
 import { api, formatRelative } from '../api';
 import { Button, PageHeader, QueryErrorState } from '../components/ui';
+import { useTranslation } from 'react-i18next';
 
-const tabs: Array<{ label: string; categories: DiagnosticCategory[] }> = [
-  { label: 'Overview', categories: [] },
-  { label: 'Runtime', categories: ['RUNTIME', 'SYSTEM'] },
-  { label: 'Database', categories: ['DATABASE'] },
-  { label: 'Storage', categories: ['STORAGE'] },
-  { label: 'Network', categories: ['NETWORK'] },
-  { label: 'Operations', categories: ['OPERATIONS', 'RELEASE', 'BACKUP'] },
-  { label: 'Rule Sets', categories: ['RULE_SET'] },
-  { label: 'Subscriptions', categories: ['SUBSCRIPTION'] },
-  { label: 'Security', categories: ['SECURITY', 'REALITY'] },
+const tabs: Array<{ id: string; categories: DiagnosticCategory[] }> = [
+  { id: 'overview', categories: [] },
+  { id: 'runtime', categories: ['RUNTIME', 'SYSTEM'] },
+  { id: 'database', categories: ['DATABASE'] },
+  { id: 'storage', categories: ['STORAGE'] },
+  { id: 'network', categories: ['NETWORK'] },
+  { id: 'operations', categories: ['OPERATIONS', 'RELEASE', 'BACKUP'] },
+  { id: 'rule-sets', categories: ['RULE_SET'] },
+  { id: 'subscriptions', categories: ['SUBSCRIPTION'] },
+  { id: 'security', categories: ['SECURITY', 'REALITY'] },
 ];
 
 const statusMeta: Record<
@@ -46,17 +47,19 @@ const statusMeta: Record<
 };
 
 function DiagnosticStatusBadge({ status }: { status: DiagnosticStatus }) {
+  const { t } = useTranslation('common');
   const meta = statusMeta[status];
   const Icon = meta.icon;
   return (
     <span className={`diagnostic-status diagnostic-${meta.className}`}>
       <Icon size={14} aria-hidden="true" />
-      {meta.label}
+      {t(`statusLabels.${status}`, { defaultValue: meta.label })}
     </span>
   );
 }
 
 function DiagnosticCard({ item }: { item: DiagnosticItem }) {
+  const { t } = useTranslation(['diagnostics', 'common']);
   return (
     <article className="diagnostic-card">
       <header>
@@ -69,26 +72,24 @@ function DiagnosticCard({ item }: { item: DiagnosticItem }) {
       <p>{item.summary}</p>
       <dl>
         <div>
-          <dt>Observed</dt>
+          <dt>{t('diagnostics:observed')}</dt>
           <dd title={item.observedAt}>{formatRelative(item.observedAt)}</dd>
         </div>
         <div>
-          <dt>Source</dt>
+          <dt>{t('diagnostics:source')}</dt>
           <dd>{item.source}</dd>
         </div>
         <div>
-          <dt>Scope</dt>
+          <dt>{t('diagnostics:scope')}</dt>
           <dd>{item.scope}</dd>
         </div>
         <div>
-          <dt>Freshness</dt>
+          <dt>{t('diagnostics:freshness')}</dt>
           <dd>{item.freshness}</dd>
         </div>
       </dl>
       {item.freshness !== 'FRESH' ? (
-        <div className="diagnostic-explanation">
-          Data may be stale or unavailable in the current deployment mode.
-        </div>
+        <div className="diagnostic-explanation">{t('diagnostics:staleExplanation')}</div>
       ) : null}
       {item.errorCode ? <code className="diagnostic-code">{item.errorCode}</code> : null}
       {item.recommendations.length ? (
@@ -99,7 +100,7 @@ function DiagnosticCard({ item }: { item: DiagnosticItem }) {
         </ul>
       ) : null}
       <details>
-        <summary>Safe details</summary>
+        <summary>{t('diagnostics:safeDetails')}</summary>
         <div className="diagnostic-details">
           {Object.entries(item.details).map(([key, value]) => (
             <div key={key}>
@@ -114,11 +115,12 @@ function DiagnosticCard({ item }: { item: DiagnosticItem }) {
 }
 
 function DiagnosticsSkeleton() {
+  const { t } = useTranslation('diagnostics');
   return (
     <div
       className="diagnostics-grid diagnostics-loading"
       aria-live="polite"
-      aria-label="Loading diagnostics"
+      aria-label={t('diagnostics:loadingAria')}
     >
       {Array.from({ length: 6 }, (_, index) => (
         <span key={index} />
@@ -128,7 +130,12 @@ function DiagnosticsSkeleton() {
 }
 
 export default function DiagnosticsPage() {
-  const [activeTab, setActiveTab] = useState('Overview');
+  const { t } = useTranslation(['diagnostics', 'common', 'navigation']);
+  const [params, setParams] = useSearchParams();
+  const requestedTab = params.get('tab');
+  const [activeTab, setActiveTab] = useState(
+    tabs.some((tab) => tab.id === requestedTab) ? requestedTab! : 'overview',
+  );
   const [autoRefresh, setAutoRefresh] = useState(true);
   const overview = useQuery({
     queryKey: ['diagnostics', 'overview'],
@@ -152,7 +159,7 @@ export default function DiagnosticsPage() {
     },
   });
   const report = deep.data ?? overview.data;
-  const selected = tabs.find((tab) => tab.label === activeTab) ?? tabs[0]!;
+  const selected = tabs.find((tab) => tab.id === activeTab) ?? tabs[0]!;
   const items = useMemo(
     () =>
       report?.items.filter(
@@ -167,8 +174,8 @@ export default function DiagnosticsPage() {
   return (
     <div className="diagnostics-page">
       <PageHeader
-        title="Diagnostics"
-        description="Read-only runtime, data, resource, and operations visibility."
+        title={t('diagnostics:title')}
+        description={t('diagnostics:description')}
         actions={
           <>
             <label className="diagnostics-auto-refresh">
@@ -177,7 +184,7 @@ export default function DiagnosticsPage() {
                 checked={autoRefresh}
                 onChange={(event) => setAutoRefresh(event.target.checked)}
               />
-              Auto refresh
+              {t('diagnostics:autoRefresh')}
             </label>
             <Button
               variant="secondary"
@@ -185,7 +192,7 @@ export default function DiagnosticsPage() {
               disabled={overview.isFetching}
             >
               <RefreshCw size={15} className={overview.isFetching ? 'spin' : ''} />
-              Refresh
+              {t('common:refresh')}
             </Button>
             <Button
               variant="secondary"
@@ -193,14 +200,15 @@ export default function DiagnosticsPage() {
               disabled={deep.isPending}
             >
               <ScanSearch size={15} />
-              {deep.isPending ? 'Scanning…' : 'Run deep diagnostics'}
+              {deep.isPending ? t('diagnostics:scanning') : t('diagnostics:runDeep')}
             </Button>
             <Button
               variant="secondary"
               onClick={() => exportBundle.mutate()}
               disabled={exportBundle.isPending}
             >
-              <Download size={15} /> {exportBundle.isPending ? 'Exporting…' : 'Export'}
+              <Download size={15} />{' '}
+              {exportBundle.isPending ? t('diagnostics:exporting') : t('diagnostics:export')}
             </Button>
           </>
         }
@@ -210,35 +218,42 @@ export default function DiagnosticsPage() {
         <section className="diagnostics-summary" aria-live="polite">
           <div>
             <DiagnosticStatusBadge status={report.status} />
-            <strong>Overall status</strong>
+            <strong>{t('diagnostics:overall')}</strong>
             <span>
-              {report.kind === 'deep' ? 'Manual deep diagnostics' : 'Cached lightweight overview'}
+              {report.kind === 'deep'
+                ? t('diagnostics:manualDeep')
+                : t('diagnostics:cachedOverview')}
             </span>
           </div>
           <div>
             <strong>{report.items.length}</strong>
-            <span>bounded checks</span>
+            <span>{t('diagnostics:boundedChecks')}</span>
           </div>
           <div>
             <strong>{report.durationMs} ms</strong>
-            <span>{report.cached ? 'cache hit' : 'collection time'}</span>
+            <span>
+              {report.cached ? t('diagnostics:cacheHit') : t('diagnostics:collectionTime')}
+            </span>
           </div>
           <div>
             <strong>{formatRelative(report.generatedAt)}</strong>
-            <span>last updated</span>
+            <span>{t('diagnostics:lastUpdated')}</span>
           </div>
         </section>
       ) : null}
 
-      <nav className="diagnostics-tabs" aria-label="Diagnostics sections">
+      <nav className="diagnostics-tabs" aria-label={t('diagnostics:sectionsAria')}>
         {tabs.map((tab) => (
           <button
-            key={tab.label}
-            className={activeTab === tab.label ? 'active' : ''}
-            aria-current={activeTab === tab.label ? 'page' : undefined}
-            onClick={() => setActiveTab(tab.label)}
+            key={tab.id}
+            className={activeTab === tab.id ? 'active' : ''}
+            aria-current={activeTab === tab.id ? 'page' : undefined}
+            onClick={() => {
+              setActiveTab(tab.id);
+              setParams(tab.id === 'overview' ? {} : { tab: tab.id }, { replace: true });
+            }}
           >
-            {tab.label}
+            {t(`diagnostics:tabs.${tab.id}`)}
           </button>
         ))}
       </nav>
@@ -247,11 +262,11 @@ export default function DiagnosticsPage() {
         <div className="diagnostic-inline-error" role="alert">
           <AlertCircle size={18} />
           <div>
-            <b>Deep diagnostics did not complete</b>
+            <b>{t('diagnostics:deepFailed')}</b>
             <span>{deep.error.message}</span>
           </div>
           <Button variant="secondary" onClick={() => deep.reset()}>
-            Dismiss
+            {t('diagnostics:dismiss')}
           </Button>
         </div>
       ) : null}
@@ -259,11 +274,11 @@ export default function DiagnosticsPage() {
         <div className="diagnostic-inline-error" role="alert">
           <AlertCircle size={18} />
           <div>
-            <b>Diagnostics export did not complete</b>
+            <b>{t('diagnostics:exportFailed')}</b>
             <span>{exportBundle.error.message}</span>
           </div>
           <Button variant="secondary" onClick={() => exportBundle.reset()}>
-            Dismiss
+            {t('diagnostics:dismiss')}
           </Button>
         </div>
       ) : null}
@@ -276,27 +291,24 @@ export default function DiagnosticsPage() {
             <DiagnosticCard key={item.id} item={item} />
           ))}
           {items.length === 0 ? (
-            <div className="diagnostics-empty">No checks are available for this section.</div>
+            <div className="diagnostics-empty">{t('diagnostics:empty')}</div>
           ) : null}
         </section>
       )}
 
       <section className="diagnostics-links">
-        <span>Dedicated tools</span>
+        <span>{t('diagnostics:dedicatedTools')}</span>
         <Link to="/servers">
-          Reality Compatibility <ExternalLink size={13} />
+          {t('diagnostics:realityCompatibility')} <ExternalLink size={13} />
         </Link>
         <Link to="/rule-sets">
-          Rule Sets <ExternalLink size={13} />
+          {t('navigation:ruleSets')} <ExternalLink size={13} />
         </Link>
         <Link to="/subscriptions">
-          Subscriptions <ExternalLink size={13} />
+          {t('navigation:subscriptions')} <ExternalLink size={13} />
         </Link>
       </section>
-      <p className="diagnostics-boundary">
-        Diagnostics are read-only. They never restart services, apply configuration, deploy, roll
-        back, restore backups, fetch remote rule sets, or run Reality compatibility tests.
-      </p>
+      <p className="diagnostics-boundary">{t('diagnostics:boundary')}</p>
     </div>
   );
 }

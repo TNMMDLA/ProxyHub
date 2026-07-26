@@ -1,0 +1,57 @@
+{
+  "addServer": "添加服务器",
+  "createNode": "创建节点",
+  "serversOnline": "在线服务器",
+  "healthyNodes": "正常节点",
+  "activePools": "启用节点池",
+  "securityScore": "安全评分",
+  "ofServers": "服务器在线率 {{value}}%",
+  "ofNodes": "节点正常率 {{value}}%",
+  "dynamicGroups": "动态节点分组",
+  "strongProtection": "防护状态良好",
+  "reviewRecommendations": "请检查安全建议",
+  "networkTraffic": "网络流量",
+  "demoData": "演示数据",
+  "trafficNotConfigured": "尚未配置流量采集",
+  "secure": "安全",
+  "info": "信息",
+  "viewSecurity": "查看安全详情",
+  "infrastructureHealth": "基础设施健康状态",
+  "systemSummary": "{{hostname}} · 内存 {{memory}} · 负载 {{load}} · Xray {{xray}}",
+  "server": "服务器",
+  "region": "区域",
+  "cpu": "CPU",
+  "memory": "内存",
+  "noServers": "尚未注册服务器。",
+  "viewServers": "查看全部服务器",
+  "recentActivity": "最近活动",
+  "systemInitialized": "系统已初始化",
+  "waitingActivity": "等待管理员操作",
+  "now": "现在",
+  "systemActor": "系统",
+  "viewActivity": "查看全部活动",
+  "quickStart": "快速开始",
+  "quickStartDescription": "按照真实资源状态完成从服务器配置到客户端交付的流程。",
+  "setupProgress": "已完成 {{completed}} / {{total}} 步",
+  "continueStep": "继续",
+  "steps": {
+    "add-server": { "title": "添加服务器", "description": "注册用于承载 Xray 节点的服务器。" },
+    "create-node": { "title": "创建节点", "description": "创建一个启用的 VLESS Reality 节点。" },
+    "validate-reality": {
+      "title": "验证 Reality 目标",
+      "description": "创建节点时会执行必要的兼容性验证。"
+    },
+    "create-node-pool": {
+      "title": "创建节点池",
+      "description": "为策略路由加入至少一个启用节点。"
+    },
+    "create-policy": { "title": "创建策略", "description": "定义客户端的路由行为。" },
+    "add-rule-set": { "title": "添加规则集", "description": "在策略需要时加入可复用的路由数据。" },
+    "create-subscription": { "title": "创建订阅", "description": "将策略绑定到客户端配置格式。" },
+    "check-readiness": {
+      "title": "运行就绪检查",
+      "description": "在不改变公开状态的前提下验证依赖并编译。"
+    },
+    "import-client": { "title": "导入客户端", "description": "根据格式查看对应的客户端导入指南。" }
+  }
+}

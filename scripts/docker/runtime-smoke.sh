@@ -114,6 +114,166 @@ const authenticated = (path, init = {}) =>
       ...(init.headers ?? {}),
     },
   });
+const jsonRequest = (path, method, body) =>
+  authenticated(path, {
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+const setup = await authenticated('/api/setup/progress');
+const setupBody = await setup.json();
+if (!setup.ok || !setupBody?.success || setupBody.data?.totalSteps !== 9) {
+  throw new Error(`Setup progress failed: ${JSON.stringify(setupBody)}`);
+}
+const setupSerialized = JSON.stringify(setupBody);
+if (/(privateKey|tokenHash|realityPrivateKeyEncrypted)/i.test(setupSerialized)) {
+  throw new Error('Setup progress exposed a sensitive field');
+}
+
+const { PrismaClient } = await import('@prisma/client');
+const prisma = new PrismaClient();
+const fixtureServer = await prisma.server.findFirst({ orderBy: { createdAt: 'asc' } });
+if (!fixtureServer) throw new Error('Phase 3 runtime smoke requires the seeded local server');
+const fixtureNode = await prisma.node.upsert({
+  where: { uuid: '00000000-0000-4000-8000-000000000031' },
+  update: { enabled: true, status: 'HEALTHY' },
+  create: {
+    serverId: fixtureServer.id,
+    name: 'Runtime Phase 3 Node',
+    host: 'edge.example.com',
+    port: 30443,
+    uuid: '00000000-0000-4000-8000-000000000031',
+    flow: 'xtls-rprx-vision',
+    realityPublicKey: 'runtime-public-material',
+    realityPrivateKeyEncrypted: 'runtime-encrypted-placeholder',
+    shortId: '0000000000000031',
+    sni: 'www.example.com',
+    dest: 'www.example.com:443',
+    fingerprint: 'chrome',
+    enabled: true,
+    status: 'HEALTHY',
+  },
+});
+await prisma.$disconnect();
+
+const listData = async (path) => {
+  const response = await authenticated(path);
+  const body = await response.json();
+  if (!response.ok || !body?.success) throw new Error(`${path} failed: ${JSON.stringify(body)}`);
+  return body.data;
+};
+const ensureResource = async (listPath, name, createBody) => {
+  const existing = (await listData(listPath)).find((item) => item.name === name);
+  if (existing) return existing;
+  const response = await jsonRequest(listPath, 'POST', createBody);
+  const body = await response.json();
+  if (!response.ok || !body?.success) {
+    throw new Error(`Creating ${name} failed: ${JSON.stringify(body)}`);
+  }
+  return body.data?.subscription ?? body.data;
+};
+const fixturePool = await ensureResource('/api/node-pools', 'Runtime Phase 3 Pool', {
+  name: 'Runtime Phase 3 Pool',
+  description: 'Isolated runtime smoke fixture',
+  region: 'Fixture',
+  strategy: 'MANUAL',
+  enabled: true,
+  nodeIds: [fixtureNode.id],
+});
+const fixturePolicy = await ensureResource('/api/policies', 'Runtime Phase 3 Policy', {
+  name: 'Runtime Phase 3 Policy',
+  description: 'Isolated runtime smoke fixture',
+  enabled: true,
+  defaultAction: 'DIRECT',
+  defaultNodePoolId: null,
+});
+await ensureResource('/api/rule-sets', 'Runtime Phase 3 Rules', {
+  name: 'Runtime Phase 3 Rules',
+  description: 'Isolated runtime smoke fixture',
+  sourceType: 'MANUAL',
+  format: 'PLAIN_TEXT',
+  enabled: true,
+});
+const fixtureSubscription = await ensureResource(
+  '/api/subscriptions',
+  'Runtime Phase 3 Subscription',
+  {
+    name: 'Runtime Phase 3 Subscription',
+    policyId: fixturePolicy.id,
+    format: 'raw',
+    enabled: true,
+    expiresAt: null,
+  },
+);
+
+const readiness = await jsonRequest(
+  `/api/subscriptions/${fixtureSubscription.id}/readiness`,
+  'POST',
+);
+const readinessBody = await readiness.json();
+if (
+  !readiness.ok ||
+  !readinessBody?.success ||
+  !['READY', 'READY_WITH_WARNINGS'].includes(readinessBody.data?.status)
+) {
+  throw new Error(`Subscription readiness failed: ${JSON.stringify(readinessBody)}`);
+}
+for (const format of ['mihomo', 'sing-box', 'raw']) {
+  const preview = await jsonRequest(
+    `/api/subscriptions/${fixtureSubscription.id}/preview`,
+    'POST',
+    { format },
+  );
+  const previewBody = await preview.json();
+  const serializedPreview = JSON.stringify(previewBody);
+  if (
+    !preview.ok ||
+    !previewBody?.success ||
+    previewBody.data?.sanitized !== true ||
+    serializedPreview.includes(fixtureNode.uuid) ||
+    serializedPreview.includes(fixtureNode.shortId) ||
+    serializedPreview.includes('runtime-encrypted-placeholder')
+  ) {
+    throw new Error(`Sanitized ${format} preview failed`);
+  }
+}
+const responseTest = await jsonRequest(
+  `/api/subscriptions/${fixtureSubscription.id}/test-response`,
+  'POST',
+);
+const responseTestBody = await responseTest.json();
+if (
+  !responseTest.ok ||
+  !responseTestBody?.success ||
+  responseTestBody.data?.statusCode !== 200 ||
+  responseTestBody.data?.token !== '[REDACTED]'
+) {
+  throw new Error(`Subscription response test failed: ${JSON.stringify(responseTestBody)}`);
+}
+const dependencies = await authenticated(
+  `/api/resources/policy/${fixturePolicy.id}/dependencies`,
+);
+const dependenciesBody = await dependencies.json();
+if (
+  !dependencies.ok ||
+  !dependenciesBody?.data?.usedBy?.some(
+    (item) =>
+      item.resourceType === 'SUBSCRIPTION' && item.resourceId === fixtureSubscription.id,
+  )
+) {
+  throw new Error('Policy dependency analysis did not include the fixture subscription');
+}
+const deleteImpact = await authenticated(
+  `/api/resources/policy/${fixturePolicy.id}/delete-impact`,
+);
+const deleteImpactBody = await deleteImpact.json();
+if (!deleteImpact.ok || deleteImpactBody.data?.status !== 'BLOCKED') {
+  throw new Error('Policy delete impact was not blocked');
+}
+if (!fixturePool?.id) throw new Error('Node pool fixture is invalid');
+console.log('Phase 3 guided workflow runtime smoke passed.');
+
 const overview = await authenticated('/api/diagnostics/overview');
 const overviewBody = await overview.json();
 if (!overview.ok || !overviewBody?.success || overviewBody.data?.kind !== 'overview') {

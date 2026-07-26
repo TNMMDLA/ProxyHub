@@ -1,7 +1,8 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { RealityTargetCompatibilityResult } from '@proxyhub/shared';
+import i18n from '../i18n/index.js';
 import { RealityCompatibilityPanel } from './RealityCompatibilityPanel.js';
 import { clearCompatibilityOnRealityChange, initialForm } from './reality-compatibility-state.js';
 
@@ -25,6 +26,10 @@ function compatibility(
 }
 
 describe('Node Reality compatibility UI', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en');
+  });
+
   it('uses dl.google.com as the recommended default without guaranteeing compatibility', () => {
     expect(initialForm.sni).toBe('dl.google.com');
     expect(initialForm.dest).toBe('dl.google.com:443');
@@ -44,8 +49,8 @@ describe('Node Reality compatibility UI', () => {
       createElement(RealityCompatibilityPanel, { result: compatibility('COMPATIBLE') }),
     );
     expect(output).toContain('Compatible');
-    expect(output).toContain('Reality handshake: PASSED');
-    expect(output).toContain('End-to-end traffic: PASSED');
+    expect(output).toContain('Reality handshake: Passed');
+    expect(output).toContain('End-to-end traffic: Passed');
     expect(output).toContain('Xray 26.5.9');
   });
 
@@ -54,8 +59,8 @@ describe('Node Reality compatibility UI', () => {
       createElement(RealityCompatibilityPanel, { result: compatibility('INCOMPATIBLE') }),
     );
     expect(output).toContain('Incompatible');
-    expect(output).toContain('TLS precheck: PASSED');
-    expect(output).toContain('Reality handshake: FAILED');
-    expect(output).toContain('End-to-end traffic: NOT_RUN');
+    expect(output).toContain('TLS precheck: Passed');
+    expect(output).toContain('Reality handshake: Failed');
+    expect(output).toContain('End-to-end traffic: Not run');
   });
 });

@@ -24,6 +24,10 @@ import type {
   RuleSetRecord,
   RuleSetSourceType,
 } from '../types';
+import { useTranslation } from 'react-i18next';
+import { confirmDeleteWithImpact } from '../delete-impact';
+import { formatDateTime, formatNumber } from '../i18n/formatters';
+import type { SupportedLocale } from '../i18n';
 
 const FORMATS: RuleSetFormat[] = ['AUTO', 'PROXYHUB_NATIVE', 'PLAIN_TEXT', 'MIHOMO'];
 const TYPES: PolicyMatchType[] = [
@@ -71,6 +75,8 @@ const emptyForm: RuleSetForm = {
 };
 
 export default function RuleSetsPage() {
+  const { t, i18n } = useTranslation(['resources', 'common']);
+  const locale: SupportedLocale = i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en';
   const client = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -273,15 +279,15 @@ export default function RuleSetsPage() {
   return (
     <>
       <PageHeader
-        title="Rule Sets"
-        description="Reusable, cached match sources for deterministic client subscription policies."
+        title={t('resources:ruleSets.title')}
+        description={t('resources:ruleSets.description')}
         actions={
           <div className="page-actions">
             <Button variant="secondary" onClick={() => openCreate('REMOTE')}>
-              <FileInput size={15} /> Add remote
+              <FileInput size={15} /> {t('resources:ruleSets.addRemote')}
             </Button>
             <Button onClick={() => openCreate('MANUAL')}>
-              <Plus size={15} /> Create manual
+              <Plus size={15} /> {t('resources:ruleSets.createManual')}
             </Button>
           </div>
         }
@@ -290,7 +296,7 @@ export default function RuleSetsPage() {
       <section className="rule-set-layout">
         <aside className="rule-set-list">
           <header>
-            <h2>Library</h2>
+            <h2>{t('resources:ruleSets.library')}</h2>
             <span>{list.data?.length ?? 0}</span>
           </header>
           {list.data?.map((ruleSet) => (
@@ -302,15 +308,18 @@ export default function RuleSetsPage() {
               <span>
                 <b>{ruleSet.name}</b>
                 <small>
-                  {ruleSet.sourceType} · {ruleSet.ruleCount.toLocaleString()} rules · used by{' '}
-                  {ruleSet.policyRules?.length ?? ruleSet._count.policyRules}
+                  {ruleSet.sourceType} ·{' '}
+                  {t('resources:ruleSets.listMeta', {
+                    count: formatNumber(ruleSet.ruleCount, locale),
+                    policies: ruleSet.policyRules?.length ?? ruleSet._count.policyRules,
+                  })}
                 </small>
               </span>
               <Status value={ruleSet.status} />
             </button>
           ))}
           {!list.isLoading && !list.data?.length ? (
-            <p className="panel-empty">Create the first reusable rule set.</p>
+            <p className="panel-empty">{t('resources:ruleSets.empty')}</p>
           ) : null}
         </aside>
 
@@ -318,8 +327,8 @@ export default function RuleSetsPage() {
           {!activeId ? (
             <EmptyState
               icon={<ListFilter />}
-              title="No rule set selected"
-              body="Create a manual set or connect a remote HTTPS source."
+              title={t('resources:ruleSets.noSelection')}
+              body={t('resources:ruleSets.createDescription')}
             />
           ) : detail.isError ? (
             <QueryErrorState error={detail.error} onRetry={() => void detail.refetch()} />
@@ -332,14 +341,15 @@ export default function RuleSetsPage() {
               <header className="rule-set-title">
                 <div>
                   <span className="eyebrow">
-                    {current.sourceType} · REVISION {current.revision}
+                    {current.sourceType} ·{' '}
+                    {t('resources:ruleSets.revisionLabel', { revision: current.revision })}
                   </span>
                   <h2>{current.name}</h2>
-                  <p>{current.description || 'No description'}</p>
+                  <p>{current.description || t('resources:ruleSets.noDescription')}</p>
                 </div>
                 <div className="rule-set-actions">
                   <Button variant="secondary" onClick={() => openEdit(current)}>
-                    <Pencil size={14} /> Edit
+                    <Pencil size={14} /> {t('common:edit')}
                   </Button>
                   {current.sourceType === 'REMOTE' ? (
                     <Button
@@ -347,45 +357,48 @@ export default function RuleSetsPage() {
                       onClick={() => action.mutate({ id: current.id, path: 'refresh' })}
                       disabled={action.isPending}
                     >
-                      <RefreshCw size={14} /> Refresh
+                      <RefreshCw size={14} /> {t('resources:ruleSets.refresh')}
                     </Button>
                   ) : null}
                   <Button variant="secondary" onClick={() => setPreviewTarget(current)}>
-                    <Eye size={14} /> Preview
+                    <Eye size={14} /> {t('resources:ruleSets.preview')}
                   </Button>
                   <Button variant="secondary" onClick={() => void exportRuleSet(current)}>
-                    <Download size={14} /> Export
+                    <Download size={14} /> {t('resources:ruleSets.export')}
                   </Button>
                 </div>
               </header>
 
               <div className="rule-set-metrics">
                 <article>
-                  <span>Status</span>
+                  <span>{t('common:status')}</span>
                   <Status value={current.status} />
                 </article>
                 <article>
-                  <span>Total rules</span>
-                  <b>{current.ruleCount.toLocaleString()}</b>
+                  <span>{t('resources:ruleSets.totalRules')}</span>
+                  <b>{formatNumber(current.ruleCount, locale)}</b>
                 </article>
                 <article>
-                  <span>Used by</span>
-                  <b>{current.policyRules?.length ?? 0} policies</b>
+                  <span>{t('resources:ruleSets.usedBy')}</span>
+                  <b>
+                    {formatNumber(current.policyRules?.length ?? 0, locale)}{' '}
+                    {t('resources:ruleSets.policies')}
+                  </b>
                 </article>
                 <article>
-                  <span>Content hash</span>
-                  <code>{current.contentHash?.slice(0, 12) ?? 'Not available'}</code>
+                  <span>{t('resources:ruleSets.contentHash')}</span>
+                  <code>{current.contentHash?.slice(0, 12) ?? t('common:notAvailable')}</code>
                 </article>
               </div>
 
               {current.status === 'STALE' ? (
                 <div className="rule-set-notice warning">
-                  <b>Using cached version</b>
+                  <b>{t('resources:ruleSets.usingCache')}</b>
                   <span>{current.lastError}</span>
                 </div>
               ) : current.status === 'ERROR' ? (
                 <div className="rule-set-notice error">
-                  <b>No usable cache</b>
+                  <b>{t('resources:ruleSets.noCache')}</b>
                   <span>{current.lastError}</span>
                 </div>
               ) : null}
@@ -393,35 +406,35 @@ export default function RuleSetsPage() {
               {current.sourceType === 'REMOTE' ? (
                 <dl className="rule-set-remote">
                   <div>
-                    <dt>Source URL</dt>
+                    <dt>{t('resources:ruleSets.sourceUrl')}</dt>
                     <dd>{current.sourceUrl}</dd>
                   </div>
                   <div>
-                    <dt>Format</dt>
+                    <dt>{t('resources:ruleSets.format')}</dt>
                     <dd>{current.format}</dd>
                   </div>
                   <div>
-                    <dt>Last fetch</dt>
+                    <dt>{t('resources:ruleSets.lastFetch')}</dt>
                     <dd>
                       {current.lastFetchAt
-                        ? new Date(current.lastFetchAt).toLocaleString()
-                        : 'Never'}
+                        ? formatDateTime(current.lastFetchAt, locale)
+                        : t('resources:ruleSets.never')}
                     </dd>
                   </div>
                   <div>
-                    <dt>Last success</dt>
+                    <dt>{t('resources:ruleSets.lastSuccess')}</dt>
                     <dd>
                       {current.lastSuccessAt
-                        ? new Date(current.lastSuccessAt).toLocaleString()
-                        : 'Never'}
+                        ? formatDateTime(current.lastSuccessAt, locale)
+                        : t('resources:ruleSets.never')}
                     </dd>
                   </div>
                   <div>
-                    <dt>Next update</dt>
+                    <dt>{t('resources:ruleSets.nextUpdate')}</dt>
                     <dd>
                       {current.nextUpdateAt
-                        ? new Date(current.nextUpdateAt).toLocaleString()
-                        : 'Manual only'}
+                        ? formatDateTime(current.nextUpdateAt, locale)
+                        : t('resources:ruleSets.manualOnly')}
                     </dd>
                   </div>
                 </dl>
@@ -429,8 +442,8 @@ export default function RuleSetsPage() {
                 <section className="rule-entry-section">
                   <div className="section-heading">
                     <div>
-                      <h2>Manual rules</h2>
-                      <p>Stored order is preserved when the policy expands this set.</p>
+                      <h2>{t('resources:ruleSets.manualRules')}</h2>
+                      <p>{t('resources:ruleSets.orderNote')}</p>
                     </div>
                     <div className="rule-set-actions">
                       <Button
@@ -440,7 +453,7 @@ export default function RuleSetsPage() {
                           setImportPreview(null);
                         }}
                       >
-                        <Upload size={14} /> Bulk import
+                        <Upload size={14} /> {t('resources:ruleSets.bulkImport')}
                       </Button>
                       <Button
                         onClick={() => {
@@ -450,7 +463,7 @@ export default function RuleSetsPage() {
                           setEntryOpen(true);
                         }}
                       >
-                        <Plus size={14} /> Add rule
+                        <Plus size={14} /> {t('resources:ruleSets.addRule')}
                       </Button>
                     </div>
                   </div>
@@ -459,7 +472,7 @@ export default function RuleSetsPage() {
                     <input
                       value={entrySearch}
                       onChange={(event) => setEntrySearch(event.target.value)}
-                      placeholder="Search cached rules..."
+                      placeholder={t('resources:ruleSets.searchCached')}
                     />
                   </label>
                   <div className="rule-entry-table">
@@ -476,7 +489,7 @@ export default function RuleSetsPage() {
                             })
                           }
                         >
-                          {entry.enabled ? 'Disable' : 'Enable'}
+                          {t(entry.enabled ? 'common:disable' : 'common:enable')}
                         </button>
                         <button
                           onClick={() => {
@@ -494,12 +507,10 @@ export default function RuleSetsPage() {
                       </div>
                     ))}
                     {!visibleEntries.length ? (
-                      <p className="panel-empty">No manual rules.</p>
+                      <p className="panel-empty">{t('resources:ruleSets.noManualRules')}</p>
                     ) : null}
                     {visibleEntries.length > 200 ? (
-                      <p className="panel-empty">
-                        Showing the first 200 matches. Refine search to narrow the list.
-                      </p>
+                      <p className="panel-empty">{t('resources:ruleSets.firstMatches')}</p>
                     ) : null}
                   </div>
                 </section>
@@ -510,7 +521,7 @@ export default function RuleSetsPage() {
                   variant="secondary"
                   onClick={() => action.mutate({ id: current.id, path: 'duplicate' })}
                 >
-                  <Copy size={14} /> Duplicate
+                  <Copy size={14} /> {t('resources:ruleSets.duplicate')}
                 </Button>
                 <Button
                   variant="secondary"
@@ -518,10 +529,19 @@ export default function RuleSetsPage() {
                     action.mutate({ id: current.id, path: current.enabled ? 'disable' : 'enable' })
                   }
                 >
-                  {current.enabled ? 'Disable' : 'Enable'}
+                  {t(current.enabled ? 'common:disable' : 'common:enable')}
                 </Button>
-                <Button variant="danger" onClick={() => remove.mutate(current.id)}>
-                  <Trash2 size={14} /> Delete
+                <Button
+                  variant="danger"
+                  onClick={() =>
+                    void confirmDeleteWithImpact('RULE_SET', current.id, current.name)
+                      .then((confirmed) => {
+                        if (confirmed) remove.mutate(current.id);
+                      })
+                      .catch((error: Error) => toast.error(error.message))
+                  }
+                >
+                  <Trash2 size={14} /> {t('common:delete')}
                 </Button>
               </div>
             </>
@@ -531,8 +551,8 @@ export default function RuleSetsPage() {
 
       {formOpen ? (
         <Modal
-          title={editing ? 'Edit rule set' : 'Create rule set'}
-          description="Rule Sets only affect client subscription compilation."
+          title={editing ? t('resources:ruleSets.edit') : t('resources:ruleSets.create')}
+          description={t('resources:ruleSets.formDescription')}
           onClose={() => setFormOpen(false)}
         >
           <form
@@ -551,13 +571,17 @@ export default function RuleSetsPage() {
                     className={form.sourceType === sourceType ? 'active' : ''}
                     onClick={() => setForm({ ...form, sourceType })}
                   >
-                    {sourceType === 'MANUAL' ? 'Manual rules' : 'Remote HTTPS source'}
+                    {t(
+                      sourceType === 'MANUAL'
+                        ? 'resources:ruleSets.manualSource'
+                        : 'resources:ruleSets.remoteSource',
+                    )}
                   </button>
                 ))}
               </div>
             ) : null}
             <label className="field">
-              <span>Name</span>
+              <span>{t('common:name')}</span>
               <input
                 autoFocus
                 value={form.name}
@@ -565,14 +589,14 @@ export default function RuleSetsPage() {
               />
             </label>
             <label className="field">
-              <span>Description</span>
+              <span>{t('common:description')}</span>
               <textarea
                 value={form.description}
                 onChange={(event) => setForm({ ...form, description: event.target.value })}
               />
             </label>
             <label className="field">
-              <span>Format</span>
+              <span>{t('resources:ruleSets.format')}</span>
               <select
                 value={form.format}
                 onChange={(event) =>
@@ -587,7 +611,7 @@ export default function RuleSetsPage() {
             {form.sourceType === 'REMOTE' ? (
               <>
                 <label className="field">
-                  <span>HTTPS source URL</span>
+                  <span>{t('resources:ruleSets.sourceUrlLabel')}</span>
                   <input
                     value={form.sourceUrl}
                     onChange={(event) => setForm({ ...form, sourceUrl: event.target.value })}
@@ -595,7 +619,7 @@ export default function RuleSetsPage() {
                   />
                 </label>
                 <label className="field">
-                  <span>Update interval (minutes, blank for manual)</span>
+                  <span>{t('resources:ruleSets.updateInterval')}</span>
                   <input
                     type="number"
                     min="5"
@@ -611,7 +635,7 @@ export default function RuleSetsPage() {
                   disabled={!form.sourceUrl || testSource.isPending}
                   onClick={() => testSource.mutate()}
                 >
-                  <RefreshCw size={14} /> Test source
+                  <RefreshCw size={14} /> {t('resources:ruleSets.testSource')}
                 </Button>
               </>
             ) : null}
@@ -622,13 +646,13 @@ export default function RuleSetsPage() {
                 onChange={(event) => setForm({ ...form, enabled: event.target.checked })}
               />
               <span>
-                <b>Enabled</b>
-                <small>Disabled references block compilation.</small>
+                <b>{t('common:enabled')}</b>
+                <small>{t('resources:ruleSets.enabledHelp')}</small>
               </span>
             </label>
             <div className="modal-actions">
               <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
-                Cancel
+                {t('common:cancel')}
               </Button>
               <Button
                 type="submit"
@@ -638,7 +662,7 @@ export default function RuleSetsPage() {
                   (form.sourceType === 'REMOTE' && !form.sourceUrl)
                 }
               >
-                Save rule set
+                {t('resources:ruleSets.saveRuleSet')}
               </Button>
             </div>
           </form>
@@ -647,7 +671,7 @@ export default function RuleSetsPage() {
 
       {entryOpen ? (
         <Modal
-          title={entryTarget ? 'Edit manual rule' : 'Add manual rule'}
+          title={entryTarget ? t('resources:ruleSets.editRule') : t('resources:ruleSets.addRule')}
           onClose={() => setEntryOpen(false)}
         >
           <form
@@ -658,7 +682,7 @@ export default function RuleSetsPage() {
             }}
           >
             <label className="field">
-              <span>Type</span>
+              <span>{t('resources:ruleSets.type')}</span>
               <select
                 value={entryType}
                 onChange={(event) => setEntryType(event.target.value as PolicyMatchType)}
@@ -669,7 +693,7 @@ export default function RuleSetsPage() {
               </select>
             </label>
             <label className="field">
-              <span>Value</span>
+              <span>{t('resources:ruleSets.value')}</span>
               <input
                 autoFocus
                 value={entryValue}
@@ -678,10 +702,10 @@ export default function RuleSetsPage() {
             </label>
             <div className="modal-actions">
               <Button type="button" variant="secondary" onClick={() => setEntryOpen(false)}>
-                Cancel
+                {t('common:cancel')}
               </Button>
               <Button type="submit" disabled={!entryValue.trim() || saveEntry.isPending}>
-                Save rule
+                {t('resources:ruleSets.saveRule')}
               </Button>
             </div>
           </form>
@@ -690,13 +714,13 @@ export default function RuleSetsPage() {
 
       {importOpen ? (
         <Modal
-          title="Bulk import manual rules"
-          description="Parse and review before atomically replacing the current entries."
+          title={t('resources:ruleSets.bulkImport')}
+          description={t('resources:ruleSets.importDescription')}
           onClose={() => setImportOpen(false)}
         >
           <div className="modal-form">
             <label className="field">
-              <span>Source format</span>
+              <span>{t('resources:ruleSets.sourceFormat')}</span>
               <select
                 value={importFormat}
                 onChange={(event) => {
@@ -710,7 +734,7 @@ export default function RuleSetsPage() {
               </select>
             </label>
             <label className="field">
-              <span>Rules</span>
+              <span>{t('resources:ruleSets.rules')}</span>
               <textarea
                 className="rule-import"
                 value={importContent}
@@ -723,10 +747,14 @@ export default function RuleSetsPage() {
             </label>
             {importPreview ? (
               <div className="import-summary">
-                <b>{importPreview.parsedRules} rules</b>
-                <span>{importPreview.duplicateCount} duplicates</span>
-                <span>{importPreview.warnings.length} warnings</span>
-                <span>{importPreview.errors.length} errors</span>
+                <b>
+                  {t('resources:ruleSets.resultSummary', {
+                    rules: formatNumber(importPreview.parsedRules, locale),
+                    duplicates: formatNumber(importPreview.duplicateCount, locale),
+                    warnings: formatNumber(importPreview.warnings.length, locale),
+                    errors: formatNumber(importPreview.errors.length, locale),
+                  })}
+                </b>
                 <code>{importPreview.contentHash.slice(0, 12)}</code>
               </div>
             ) : null}
@@ -736,7 +764,7 @@ export default function RuleSetsPage() {
                 disabled={!importContent || parseImport.isPending}
                 onClick={() => parseImport.mutate()}
               >
-                Parse preview
+                {t('resources:ruleSets.parsePreview')}
               </Button>
               <Button
                 disabled={
@@ -744,7 +772,7 @@ export default function RuleSetsPage() {
                 }
                 onClick={() => confirmImport.mutate()}
               >
-                Confirm import
+                {t('resources:ruleSets.confirmImport')}
               </Button>
             </div>
           </div>
@@ -753,8 +781,8 @@ export default function RuleSetsPage() {
 
       {previewTarget ? (
         <Modal
-          title={`${previewTarget.name} cache preview`}
-          description="Only a bounded sample is rendered."
+          title={t('resources:ruleSets.cachePreview', { name: previewTarget.name })}
+          description={t('resources:ruleSets.previewDescription')}
           onClose={() => setPreviewTarget(null)}
         >
           {cachedPreview.isError ? (
@@ -765,8 +793,12 @@ export default function RuleSetsPage() {
           ) : cachedPreview.data ? (
             <div className="cache-preview">
               <div className="import-summary">
-                <b>{cachedPreview.data.totalRules.toLocaleString()} rules</b>
-                <span>{cachedPreview.data.duplicateCount} duplicates</span>
+                <b>
+                  {t('resources:ruleSets.cacheSummary', {
+                    rules: formatNumber(cachedPreview.data.totalRules, locale),
+                    duplicates: formatNumber(cachedPreview.data.duplicateCount, locale),
+                  })}
+                </b>
                 <Status value={cachedPreview.data.status} />
               </div>
               <div className="rule-entry-table">

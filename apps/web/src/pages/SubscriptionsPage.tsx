@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Copy,
   Eye,
-  EyeOff,
   FileCode2,
   KeyRound,
   Link2,
@@ -12,16 +11,30 @@ import {
   RefreshCw,
   Search,
   Trash2,
+  ShieldCheck,
+  TestTube2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { api, formatRelative } from '../api';
+import { api } from '../api';
 import { Button, EmptyState, Modal, PageHeader, QueryErrorState, Status } from '../components/ui';
 import type {
-  CompilerPreviewRecord,
   PolicyRecord,
+  SubscriptionCapabilityRecord,
   SubscriptionFormat,
+  SubscriptionPreviewRecord,
   SubscriptionRecord,
+  SubscriptionResponseTestRecord,
 } from '../types';
+import type { SubscriptionReadinessResult } from '@proxyhub/shared';
+import { useTranslation } from 'react-i18next';
+import {
+  formatDateTime,
+  formatDuration,
+  formatFileSize,
+  formatRelativeTime,
+} from '../i18n/formatters';
+import type { SupportedLocale } from '../i18n';
+import { confirmDeleteWithImpact } from '../delete-impact';
 
 interface SubscriptionForm {
   name: string;
@@ -50,6 +63,8 @@ function expirationPayload(value: string): string | null {
 }
 
 export default function SubscriptionsPage() {
+  const { t, i18n } = useTranslation(['subscriptions', 'common', 'errors']);
+  const locale: SupportedLocale = i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en';
   const client = useQueryClient();
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -59,8 +74,12 @@ export default function SubscriptionsPage() {
   const [knownUrls, setKnownUrls] = useState<Record<string, string>>({});
   const [rotateTarget, setRotateTarget] = useState<SubscriptionRecord | null>(null);
   const [previewTarget, setPreviewTarget] = useState<SubscriptionRecord | null>(null);
-  const [preview, setPreview] = useState<CompilerPreviewRecord | null>(null);
-  const [reveal, setReveal] = useState(false);
+  const [preview, setPreview] = useState<SubscriptionPreviewRecord | null>(null);
+  const [readinessTarget, setReadinessTarget] = useState<SubscriptionRecord | null>(null);
+  const [readiness, setReadiness] = useState<SubscriptionReadinessResult | null>(null);
+  const [responseTarget, setResponseTarget] = useState<SubscriptionRecord | null>(null);
+  const [responseTest, setResponseTest] = useState<SubscriptionResponseTestRecord | null>(null);
+  const previewController = useRef<AbortController | null>(null);
 
   const subscriptions = useQuery({
     queryKey: ['subscriptions'],
@@ -69,6 +88,11 @@ export default function SubscriptionsPage() {
   const policies = useQuery({
     queryKey: ['policies'],
     queryFn: () => api<PolicyRecord[]>('/policies'),
+  });
+  const capabilities = useQuery({
+    queryKey: ['subscription-capabilities'],
+    queryFn: () => api<SubscriptionCapabilityRecord[]>('/subscriptions/capabilities'),
+    staleTime: 60_000,
   });
   const invalidate = () => client.invalidateQueries({ queryKey: ['subscriptions'] });
 
@@ -92,19 +116,26 @@ export default function SubscriptionsPage() {
         const url = `${window.location.origin}${result.path}`;
         setIssued(result);
         setKnownUrls((current) => ({ ...current, [result.subscription.id]: url }));
-        toast.success('Subscription created; save the token now');
-      } else toast.success('Subscription updated');
+        toast.success(t('subscriptions:created'));
+      } else toast.success(t('subscriptions:updated'));
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) =>
+      toast.error(
+        'code' in error
+          ? t(`errors:${String(error.code)}`, { defaultValue: error.message })
+          : error.message,
+      ),
   });
   const toggle = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       api(`/subscriptions/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
     onSuccess: async () => {
       await invalidate();
-      toast.success('Subscription status updated');
+      toast.success(t('subscriptions:statusUpdated'));
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => {
+      if (error.name !== 'AbortError') toast.error(error.message);
+    },
   });
   const rotate = useMutation({
     mutationFn: (id: string) =>
@@ -115,22 +146,44 @@ export default function SubscriptionsPage() {
       const url = `${window.location.origin}${result.path}`;
       setIssued(result);
       setKnownUrls((current) => ({ ...current, [result.subscription.id]: url }));
-      toast.success('Token rotated; the old URL is no longer valid');
+      toast.success(t('subscriptions:tokenRotated'));
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => {
+      if (error.name !== 'AbortError') toast.error(error.message);
+    },
   });
   const remove = useMutation({
     mutationFn: (id: string) => api(`/subscriptions/${id}`, { method: 'DELETE' }),
     onSuccess: async () => {
       await invalidate();
-      toast.success('Subscription deleted');
+      toast.success(t('subscriptions:deleted'));
     },
     onError: (error) => toast.error(error.message),
   });
   const compilePreview = useMutation({
-    mutationFn: (id: string) =>
-      api<CompilerPreviewRecord>(`/subscriptions/${id}/preview`, { method: 'POST' }),
+    mutationFn: ({ id, signal }: { id: string; signal: AbortSignal }) =>
+      api<SubscriptionPreviewRecord>(`/subscriptions/${id}/preview`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+        signal,
+      }),
     onSuccess: (result) => setPreview(result),
+    onError: (error) => {
+      if (error.name !== 'AbortError') toast.error(error.message);
+    },
+  });
+  const checkReadiness = useMutation({
+    mutationFn: (id: string) =>
+      api<SubscriptionReadinessResult>(`/subscriptions/${id}/readiness`, { method: 'POST' }),
+    onSuccess: (result) => setReadiness(result),
+    onError: (error) => toast.error(error.message),
+  });
+  const runResponseTest = useMutation({
+    mutationFn: (id: string) =>
+      api<SubscriptionResponseTestRecord>(`/subscriptions/${id}/test-response`, {
+        method: 'POST',
+      }),
+    onSuccess: (result) => setResponseTest(result),
     onError: (error) => toast.error(error.message),
   });
 
@@ -160,8 +213,9 @@ export default function SubscriptionsPage() {
   const openPreview = (item: SubscriptionRecord) => {
     setPreviewTarget(item);
     setPreview(null);
-    setReveal(false);
-    compilePreview.mutate(item.id);
+    previewController.current?.abort();
+    previewController.current = new AbortController();
+    compilePreview.mutate({ id: item.id, signal: previewController.current.signal });
   };
   const copyText = async (value: string, message: string) => {
     await navigator.clipboard.writeText(value);
@@ -176,11 +230,11 @@ export default function SubscriptionsPage() {
   return (
     <>
       <PageHeader
-        title="Subscriptions"
-        description="Publish compiled policies through secure, rotatable, format-bound tokens."
+        title={t('subscriptions:title')}
+        description={t('subscriptions:description')}
         actions={
           <Button onClick={openCreate}>
-            <Plus size={16} /> Create subscription
+            <Plus size={16} /> {t('subscriptions:create')}
           </Button>
         }
       />
@@ -188,19 +242,21 @@ export default function SubscriptionsPage() {
         <div>
           <Link2 />
           <span>
-            Total subscriptions<strong>{subscriptions.data?.length ?? 0}</strong>
+            {t('subscriptions:total')}
+            <strong>{subscriptions.data?.length ?? 0}</strong>
           </span>
         </div>
         <div>
           <KeyRound />
           <span>
-            Enabled<strong>{subscriptions.data?.filter((item) => item.enabled).length ?? 0}</strong>
+            {t('subscriptions:enabled')}
+            <strong>{subscriptions.data?.filter((item) => item.enabled).length ?? 0}</strong>
           </span>
         </div>
         <div>
           <FileCode2 />
           <span>
-            Policies
+            {t('subscriptions:policies')}
             <strong>{new Set(subscriptions.data?.map((item) => item.policyId)).size}</strong>
           </span>
         </div>
@@ -210,9 +266,9 @@ export default function SubscriptionsPage() {
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search subscriptions..."
+          placeholder={t('subscriptions:search')}
         />
-        <span>{filtered.length} records</span>
+        <span>{t('subscriptions:records', { count: filtered.length })}</span>
       </div>
       {filtered.length ? (
         <section className="subscription-grid">
@@ -228,60 +284,90 @@ export default function SubscriptionsPage() {
                   <div>
                     <h3>{item.name}</h3>
                     <p>
-                      {item.policy.name} · revision {item.policy.revision}
+                      {item.policy.name} ·{' '}
+                      {t('subscriptions:revision', { value: item.policy.revision })}
                     </p>
                   </div>
                   <Status value={expired ? 'EXPIRED' : item.enabled ? 'ENABLED' : 'DISABLED'} />
                 </header>
                 <dl>
                   <div>
-                    <dt>Format</dt>
+                    <dt>{t('subscriptions:format')}</dt>
                     <dd>{item.format}</dd>
                   </div>
                   <div>
-                    <dt>Token</dt>
+                    <dt>{t('subscriptions:token')}</dt>
                     <dd className="mono">{item.tokenPrefix}••••</dd>
                   </div>
                   <div>
-                    <dt>Expiration</dt>
-                    <dd>{item.expiresAt ? new Date(item.expiresAt).toLocaleString() : 'Never'}</dd>
+                    <dt>{t('subscriptions:expiration')}</dt>
+                    <dd>
+                      {item.expiresAt ? formatDateTime(item.expiresAt, locale) : t('common:never')}
+                    </dd>
                   </div>
                   <div>
-                    <dt>Last access</dt>
-                    <dd>{item.lastAccessAt ? formatRelative(item.lastAccessAt) : 'Never'}</dd>
+                    <dt>{t('subscriptions:lastAccess')}</dt>
+                    <dd>
+                      {item.lastAccessAt
+                        ? formatRelativeTime(item.lastAccessAt, locale)
+                        : t('common:never')}
+                    </dd>
                   </div>
                   <div>
-                    <dt>Created</dt>
-                    <dd>{formatRelative(item.createdAt)}</dd>
+                    <dt>{t('subscriptions:createdAt')}</dt>
+                    <dd>{formatRelativeTime(item.createdAt, locale)}</dd>
                   </div>
                 </dl>
                 <div className="subscription-actions">
                   <button onClick={() => openPreview(item)}>
-                    <Eye size={14} /> Preview
+                    <Eye size={14} /> {t('subscriptions:preview')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setReadinessTarget(item);
+                      setReadiness(null);
+                      checkReadiness.mutate(item.id);
+                    }}
+                  >
+                    <ShieldCheck size={14} /> {t('subscriptions:runReadiness')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setResponseTarget(item);
+                      setResponseTest(null);
+                      runResponseTest.mutate(item.id);
+                    }}
+                  >
+                    <TestTube2 size={14} /> {t('subscriptions:testResponse')}
                   </button>
                   <button
                     disabled={!knownUrl}
-                    title={knownUrl ? 'Copy subscription URL' : 'Rotate token to reveal a new URL'}
+                    title={
+                      knownUrl ? t('subscriptions:copyUrlTitle') : t('subscriptions:rotateToReveal')
+                    }
                     onClick={() => knownUrl && void copyText(knownUrl, 'Subscription URL copied')}
                   >
-                    <Copy size={14} /> Copy URL
+                    <Copy size={14} /> {t('subscriptions:copyUrl')}
                   </button>
                   <button onClick={() => openEdit(item)}>
-                    <Pencil size={14} /> Edit
+                    <Pencil size={14} /> {t('common:edit')}
                   </button>
                   <button onClick={() => toggle.mutate({ id: item.id, enabled: !item.enabled })}>
-                    {item.enabled ? 'Disable' : 'Enable'}
+                    {item.enabled ? t('subscriptions:disable') : t('subscriptions:enable')}
                   </button>
                   <button onClick={() => setRotateTarget(item)}>
-                    <RefreshCw size={14} /> Rotate
+                    <RefreshCw size={14} /> {t('subscriptions:rotate')}
                   </button>
                   <button
                     className="danger"
-                    aria-label={`Delete ${item.name}`}
-                    onClick={() => {
-                      if (window.confirm(`Delete subscription “${item.name}”?`))
-                        remove.mutate(item.id);
-                    }}
+                    aria-label={t('subscriptions:deleteTitle')}
+                    onClick={() =>
+                      void confirmDeleteWithImpact('SUBSCRIPTION', item.id, item.name)
+                        .then((confirmed) => {
+                          if (confirmed) remove.mutate(item.id);
+                        })
+                        .catch((error: Error) => toast.error(error.message))
+                    }
                   >
                     <Trash2 size={14} />
                   </button>
@@ -293,16 +379,91 @@ export default function SubscriptionsPage() {
       ) : (
         <EmptyState
           icon={<Link2 />}
-          title="No subscriptions"
-          body="Create a secure subscription after defining a policy."
-          action={<Button onClick={openCreate}>Create subscription</Button>}
+          title={t('subscriptions:noSubscriptions')}
+          body={t('subscriptions:emptyDescription')}
+          action={<Button onClick={openCreate}>{t('subscriptions:create')}</Button>}
         />
       )}
+      <section className="panel subscription-capabilities">
+        <div className="panel-title">
+          <div>
+            <h3>{t('subscriptions:capabilities')}</h3>
+            <p>{t('subscriptions:capabilityDescription')}</p>
+          </div>
+        </div>
+        <div className="responsive-table">
+          <table>
+            <thead>
+              <tr>
+                <th>{t('subscriptions:format')}</th>
+                {[
+                  'nodes',
+                  'reality',
+                  'visionFlow',
+                  'proxyGroups',
+                  'nodePoolMapping',
+                  'routingRules',
+                  'ruleSets',
+                  'dns',
+                  'finalRule',
+                  'subscriptionToken',
+                  'etag',
+                  'configPreview',
+                ].map((feature) => (
+                  <th key={feature}>{feature}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(capabilities.data ?? []).map((capability) => (
+                <tr key={capability.format}>
+                  <td>
+                    <b>{capability.format}</b>
+                  </td>
+                  {Object.values(capability.features).map((state, index) => (
+                    <td key={`${capability.format}-${String(index)}`}>
+                      <Status value={state} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="panel client-guides">
+        <div className="panel-title">
+          <div>
+            <h3>{t('subscriptions:clientGuide')}</h3>
+            <p>{t('subscriptions:capabilityDescription')}</p>
+          </div>
+        </div>
+        <div className="client-guide-grid">
+          {(['clash', 'mihomo', 'singbox', 'v2rayn', 'v2rayng'] as const).map((client) => (
+            <article key={client}>
+              <h4>{t(`subscriptions:guides.${client}.name`)}</h4>
+              <Status
+                value={
+                  client === 'singbox'
+                    ? 'PARTIAL'
+                    : client === 'v2rayn' || client === 'v2rayng'
+                      ? 'PARTIAL'
+                      : 'SUPPORTED'
+                }
+              />
+              <b>{t(`subscriptions:guides.${client}.format`)}</b>
+              <p>{t(`subscriptions:guides.${client}.steps`)}</p>
+              <small>{t(`subscriptions:guides.${client}.limits`)}</small>
+              <a href="/diagnostics?tab=subscriptions">{t('common:openDiagnostics')}</a>
+            </article>
+          ))}
+        </div>
+      </section>
 
       {formOpen ? (
         <Modal
-          title={editingId ? 'Edit subscription' : 'Create subscription'}
-          description="The selected format is fixed for this subscription URL."
+          title={editingId ? t('subscriptions:edit') : t('subscriptions:create')}
+          description={t('subscriptions:formDescription')}
           onClose={() => setFormOpen(false)}
         >
           <form
@@ -313,7 +474,7 @@ export default function SubscriptionsPage() {
             }}
           >
             <label className="field">
-              <span>Name</span>
+              <span>{t('common:name')}</span>
               <input
                 autoFocus
                 value={form.name}
@@ -322,22 +483,22 @@ export default function SubscriptionsPage() {
             </label>
             <div className="form-grid">
               <label className="field">
-                <span>Policy</span>
+                <span>{t('subscriptions:policy')}</span>
                 <select
                   value={form.policyId}
                   onChange={(event) => setForm({ ...form, policyId: event.target.value })}
                 >
-                  <option value="">Select policy</option>
+                  <option value="">{t('subscriptions:selectPolicy')}</option>
                   {policies.data?.map((policy) => (
                     <option key={policy.id} value={policy.id}>
                       {policy.name}
-                      {!policy.enabled ? ' (disabled)' : ''}
+                      {!policy.enabled ? t('subscriptions:disabledSuffix') : ''}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="field">
-                <span>Format</span>
+                <span>{t('subscriptions:format')}</span>
                 <select
                   value={form.format}
                   onChange={(event) =>
@@ -351,7 +512,7 @@ export default function SubscriptionsPage() {
               </label>
             </div>
             <label className="field">
-              <span>Expires at (optional)</span>
+              <span>{t('subscriptions:expiresOptional')}</span>
               <input
                 type="datetime-local"
                 value={form.expiresAt}
@@ -365,19 +526,19 @@ export default function SubscriptionsPage() {
                 onChange={(event) => setForm({ ...form, enabled: event.target.checked })}
               />
               <span>
-                <b>Subscription enabled</b>
-                <small>Disabled tokens cannot retrieve compiled content.</small>
+                <b>{t('subscriptions:subscriptionEnabled')}</b>
+                <small>{t('subscriptions:disabledHelp')}</small>
               </span>
             </label>
             <div className="modal-actions">
               <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
-                Cancel
+                {t('common:cancel')}
               </Button>
               <Button
                 type="submit"
                 disabled={save.isPending || form.name.trim().length < 2 || !form.policyId}
               >
-                {editingId ? 'Save changes' : 'Create subscription'}
+                {editingId ? t('subscriptions:saveChanges') : t('subscriptions:create')}
               </Button>
             </div>
           </form>
@@ -386,28 +547,25 @@ export default function SubscriptionsPage() {
 
       {issued ? (
         <Modal
-          title="Token only shown once"
-          description="Store this URL now. ProxyHub only keeps its cryptographic hash."
+          title={t('subscriptions:tokenOnce')}
+          description={t('subscriptions:tokenOnceDescription')}
           onClose={() => setIssued(null)}
         >
           <div className="token-reveal">
-            <span>Subscription URL</span>
+            <span>{t('subscriptions:subscriptionUrl')}</span>
             <code>{`${window.location.origin}${issued.path}`}</code>
-            <span>Full token</span>
+            <span>{t('subscriptions:fullToken')}</span>
             <code>{issued.token}</code>
             <div className="security-callout">
               <KeyRound size={18} />
-              <p>
-                Anyone with this URL can fetch the subscription. It cannot be recovered after this
-                dialog closes.
-              </p>
+              <p>{t('subscriptions:tokenWarning')}</p>
             </div>
             <div className="modal-actions">
               <Button
                 variant="secondary"
                 onClick={() => void copyText(issued.token, 'Token copied')}
               >
-                Copy token
+                {t('subscriptions:copyToken')}
               </Button>
               <Button
                 onClick={() =>
@@ -417,7 +575,7 @@ export default function SubscriptionsPage() {
                   )
                 }
               >
-                <Copy size={15} /> Copy URL
+                <Copy size={15} /> {t('subscriptions:copyUrl')}
               </Button>
             </div>
           </div>
@@ -426,25 +584,22 @@ export default function SubscriptionsPage() {
 
       {rotateTarget ? (
         <Modal
-          title="Rotate subscription token?"
-          description="The old subscription URL will stop working immediately."
+          title={t('subscriptions:rotateTitle')}
+          description={t('subscriptions:rotateDescription')}
           onClose={() => setRotateTarget(null)}
         >
           <div className="confirm-dialog">
-            <p>
-              Rotate the token for <b>{rotateTarget.name}</b>? Connected clients must be updated
-              with the new URL.
-            </p>
+            <p>{t('subscriptions:rotateConfirm', { name: rotateTarget.name })}</p>
             <div className="modal-actions">
               <Button variant="secondary" onClick={() => setRotateTarget(null)}>
-                Cancel
+                {t('common:cancel')}
               </Button>
               <Button
                 variant="danger"
                 onClick={() => rotate.mutate(rotateTarget.id)}
                 disabled={rotate.isPending}
               >
-                <RefreshCw size={15} /> Rotate token
+                <RefreshCw size={15} /> {t('subscriptions:rotateToken')}
               </Button>
             </div>
           </div>
@@ -453,38 +608,49 @@ export default function SubscriptionsPage() {
 
       {previewTarget ? (
         <Modal
-          title={`${previewTarget.name} preview`}
-          description={`Compiled from ${previewTarget.policy.name} through the ${previewTarget.format} adapter.`}
-          onClose={() => setPreviewTarget(null)}
+          title={t('subscriptions:previewTitle', { name: previewTarget.name })}
+          description={t('subscriptions:previewDescription', {
+            policy: previewTarget.policy.name,
+            format: previewTarget.format,
+          })}
+          onClose={() => {
+            previewController.current?.abort();
+            setPreviewTarget(null);
+          }}
         >
           <div className="subscription-preview">
             <div className="compile-summary">
               <Status
-                value={
-                  preview?.success ? 'SUCCESS' : compilePreview.isPending ? 'PENDING' : 'FAILURE'
-                }
+                value={preview ? 'READY' : compilePreview.isPending ? 'IN_PROGRESS' : 'FAILED'}
               />
-              <button onClick={() => setReveal((value) => !value)}>
-                {reveal ? <EyeOff size={14} /> : <Eye size={14} />}
-                {reveal ? 'Mask credentials' : 'Show full output'}
-              </button>
+              {compilePreview.isPending ? (
+                <button
+                  onClick={() => {
+                    previewController.current?.abort();
+                    compilePreview.reset();
+                  }}
+                >
+                  {t('common:cancel')}
+                </button>
+              ) : null}
+              <span>
+                <ShieldCheck size={14} /> {t('subscriptions:sanitizedPreview')}
+              </span>
               {preview ? (
                 <button
-                  onClick={() =>
-                    void copyText(reveal ? preview.output : preview.maskedOutput, 'Preview copied')
-                  }
+                  onClick={() => void copyText(preview.output, t('subscriptions:previewCopied'))}
                 >
-                  <Copy size={14} /> Copy
+                  <Copy size={14} /> {t('common:copy')}
                 </button>
               ) : null}
             </div>
-            {preview?.errors.length || preview?.warnings.length ? (
+            {preview?.truncated ? (
+              <p className="preview-warning">{t('subscriptions:truncated')}</p>
+            ) : null}
+            {preview?.warnings.length ? (
               <div className="compiler-diagnostics">
-                {[...(preview?.errors ?? []), ...(preview?.warnings ?? [])].map((item, index) => (
-                  <div
-                    key={`${item.code}-${index}`}
-                    className={preview?.errors.includes(item) ? 'error' : 'warning'}
-                  >
+                {preview.warnings.map((item, index) => (
+                  <div key={`${item.code}-${index}`} className="warning">
                     <b>{item.code}</b>
                     <span>
                       {item.ruleName ? `${item.ruleName}: ` : ''}
@@ -498,14 +664,122 @@ export default function SubscriptionsPage() {
             <pre className="config-preview">
               <code>
                 {compilePreview.isPending
-                  ? 'Compiling current policy…'
+                  ? t('subscriptions:compiling')
                   : preview
-                    ? reveal
-                      ? preview.output
-                      : preview.maskedOutput
-                    : 'Compile failed.'}
+                    ? preview.output
+                    : t('subscriptions:compileFailed')}
               </code>
             </pre>
+          </div>
+        </Modal>
+      ) : null}
+      {readinessTarget ? (
+        <Modal
+          title={`${readinessTarget.name} · ${t('subscriptions:readinessTitle')}`}
+          onClose={() => setReadinessTarget(null)}
+        >
+          <div className="readiness-panel">
+            {checkReadiness.isPending ? (
+              <p>{t('subscriptions:compiling')}</p>
+            ) : readiness ? (
+              <>
+                <header>
+                  <Status value={readiness.status} />
+                  <span>
+                    {t('subscriptions:readinessChecked', {
+                      time: formatDateTime(readiness.checkedAt, locale),
+                      duration: formatDuration(readiness.durationMs, locale),
+                    })}
+                  </span>
+                  <b>{t('subscriptions:blockingIssues', { count: readiness.blockingCount })}</b>
+                  <b>{t('subscriptions:warnings', { count: readiness.warningCount })}</b>
+                </header>
+                <div className="readiness-checks">
+                  {readiness.checks.map((item) => (
+                    <article key={item.id}>
+                      <Status value={item.status} />
+                      <div>
+                        <b>
+                          {t(`subscriptions:${item.titleCode}`, {
+                            defaultValue: item.titleCode,
+                          })}
+                        </b>
+                        <p>
+                          {t(`subscriptions:${item.summaryCode}`, {
+                            defaultValue: item.summaryCode,
+                          })}
+                        </p>
+                        {item.errorCode ? <code>{item.errorCode}</code> : null}
+                        {item.resourceType ? (
+                          <small>
+                            {item.resourceType}
+                            {item.resourceName ? ` · ${item.resourceName}` : ''}
+                          </small>
+                        ) : null}
+                        <small>
+                          {t(`subscriptions:readiness.stages.${item.stage}`, {
+                            defaultValue: item.stage,
+                          })}
+                          {item.field ? ` · ${item.field}` : ''}
+                        </small>
+                        {item.recommendations.length ? (
+                          <ul>
+                            {item.recommendations.map((recommendation) => (
+                              <li key={recommendation}>
+                                {t(`subscriptions:readiness.recommendations.${recommendation}`, {
+                                  defaultValue: recommendation,
+                                })}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <a className="button button-secondary" href="/diagnostics?tab=subscriptions">
+                  {t('common:openDiagnostics')}
+                </a>
+              </>
+            ) : null}
+          </div>
+        </Modal>
+      ) : null}
+      {responseTarget ? (
+        <Modal
+          title={`${responseTarget.name} · ${t('subscriptions:responseTitle')}`}
+          onClose={() => setResponseTarget(null)}
+        >
+          <div className="response-test-panel">
+            {runResponseTest.isPending ? (
+              <p>{t('subscriptions:compiling')}</p>
+            ) : responseTest ? (
+              <>
+                <Status value={responseTest.accessible ? 'READY' : 'BLOCKED'} />
+                <dl>
+                  <div>
+                    <dt>{t('subscriptions:httpStatus')}</dt>
+                    <dd>{responseTest.statusCode}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('subscriptions:contentType')}</dt>
+                    <dd>{responseTest.contentType ?? responseTest.errorCode}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('subscriptions:cacheControl')}</dt>
+                    <dd>{responseTest.cacheControl ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>ETag</dt>
+                    <dd className="mono">{responseTest.etag ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('subscriptions:responseSize')}</dt>
+                    <dd>{formatFileSize(responseTest.responseBytes ?? 0, locale)}</dd>
+                  </div>
+                </dl>
+              </>
+            ) : null}
           </div>
         </Modal>
       ) : null}

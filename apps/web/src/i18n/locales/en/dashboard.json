@@ -1,0 +1,75 @@
+{
+  "addServer": "Add server",
+  "createNode": "Create node",
+  "serversOnline": "Servers online",
+  "healthyNodes": "Healthy nodes",
+  "activePools": "Active pools",
+  "securityScore": "Security score",
+  "ofServers": "{{value}}% of servers",
+  "ofNodes": "{{value}}% of nodes",
+  "dynamicGroups": "Dynamic node groups",
+  "strongProtection": "Strong protection",
+  "reviewRecommendations": "Review recommendations",
+  "networkTraffic": "Network traffic",
+  "demoData": "Demo Data",
+  "trafficNotConfigured": "Traffic collection not configured",
+  "secure": "Secure",
+  "info": "Info",
+  "viewSecurity": "View security insights",
+  "infrastructureHealth": "Infrastructure health",
+  "systemSummary": "{{hostname}} · memory {{memory}} · load {{load}} · Xray {{xray}}",
+  "server": "Server",
+  "region": "Region",
+  "cpu": "CPU",
+  "memory": "Memory",
+  "noServers": "No servers registered.",
+  "viewServers": "View all servers",
+  "recentActivity": "Recent activity",
+  "systemInitialized": "System initialized",
+  "waitingActivity": "Waiting for administrator activity",
+  "now": "now",
+  "systemActor": "System",
+  "viewActivity": "View all activity",
+  "quickStart": "Quick Start",
+  "quickStartDescription": "Complete the real resource workflow from server setup to client delivery.",
+  "setupProgress": "{{completed}} of {{total}} steps complete",
+  "continueStep": "Continue",
+  "steps": {
+    "add-server": {
+      "title": "Add a server",
+      "description": "Register the server that hosts your Xray nodes."
+    },
+    "create-node": {
+      "title": "Create a node",
+      "description": "Create an enabled VLESS Reality node."
+    },
+    "validate-reality": {
+      "title": "Validate the Reality target",
+      "description": "Node creation includes the required compatibility validation."
+    },
+    "create-node-pool": {
+      "title": "Create a node pool",
+      "description": "Group at least one enabled node for policy routing."
+    },
+    "create-policy": {
+      "title": "Create a policy",
+      "description": "Define the client routing behavior."
+    },
+    "add-rule-set": {
+      "title": "Add a Rule Set",
+      "description": "Add reusable routing data when your policy needs it."
+    },
+    "create-subscription": {
+      "title": "Create a subscription",
+      "description": "Bind a policy to a client configuration format."
+    },
+    "check-readiness": {
+      "title": "Run readiness",
+      "description": "Validate dependencies and compile without changing public state."
+    },
+    "import-client": {
+      "title": "Import a client",
+      "description": "Use the matching format and client guide."
+    }
+  }
+}

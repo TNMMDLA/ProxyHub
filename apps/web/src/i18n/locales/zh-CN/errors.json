@@ -1,0 +1,14 @@
+{
+  "viewTitle": "无法加载此页面",
+  "unexpected": "应用发生意外错误。",
+  "NETWORK_ERROR": "无法连接 ProxyHub API。",
+  "INVALID_RESPONSE": "ProxyHub API 返回了无效响应。",
+  "REQUEST_FAILED": "请求失败。",
+  "AUTH_REQUIRED": "需要先登录。",
+  "SESSION_EXPIRED": "登录会话已过期。",
+  "FORBIDDEN": "你没有执行此操作的权限。",
+  "VALIDATION_ERROR": "部分字段填写有误。",
+  "SUBSCRIPTION_NOT_READY": "订阅存在尚未解决的依赖问题。",
+  "DELETE_BLOCKED_BY_DEPENDENCY": "请先解除列出的依赖关系，再删除此资源。",
+  "INTERNAL_ERROR": "服务器发生意外错误。"
+}

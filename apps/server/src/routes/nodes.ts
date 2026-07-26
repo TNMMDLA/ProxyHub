@@ -18,6 +18,7 @@ import { audit } from '../audit.js';
 import { requireRole } from '../auth/session.js';
 import { prisma } from '../db.js';
 import { AppError } from '../errors.js';
+import { assertDeleteAllowed } from '../resource-dependencies.js';
 import { decryptSecret, encryptSecret } from '../security/crypto.js';
 
 const nodeSelect = {
@@ -487,6 +488,7 @@ export const nodeRoutes: FastifyPluginAsync<{ agentClient: AgentClient }> = asyn
 
   app.delete('/:id', { preHandler: requireRole('ADMIN', 'OPERATOR') }, async (request) => {
     const id = (request.params as { id: string }).id;
+    await assertDeleteAllowed('NODE', id, request);
     await synchronizeNodeMutation({
       request,
       agentClient: options.agentClient,

@@ -1,0 +1,14 @@
+{
+  "title": "设置",
+  "description": "查看此实例的发布身份、语言和支持信息。",
+  "releaseIdentity": "发布身份",
+  "buildDeployment": "{{environment}} 构建 · {{mode}} 部署",
+  "version": "ProxyHub 版本",
+  "gitCommit": "Git 提交",
+  "buildTime": "构建时间",
+  "xrayCore": "Xray Core",
+  "migrationFingerprint": "Migration 指纹",
+  "metadataNote": "此页面只包含公开的构建元数据。健康检查接口不会返回 Secret、环境变量值或数据库路径。",
+  "languageTitle": "显示语言",
+  "languageDescription": "语言偏好只保存在当前浏览器中。翻译缺失时会使用英文。"
+}

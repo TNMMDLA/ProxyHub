@@ -26,33 +26,35 @@ import type { AgentStatusData, ProxyHubHealthData } from '@proxyhub/shared';
 import { api } from '../api';
 import { useUiStore } from '../store';
 import type { Admin, NotificationRecord } from '../types';
+import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 const groups = [
-  { label: 'OVERVIEW', items: [{ to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }] },
+  { key: 'overview', items: [{ to: '/dashboard', key: 'dashboard', icon: LayoutDashboard }] },
   {
-    label: 'INFRASTRUCTURE',
+    key: 'infrastructure',
     items: [
-      { to: '/servers', label: 'Servers', icon: Server },
-      { to: '/nodes', label: 'Nodes', icon: Waypoints },
-      { to: '/node-pools', label: 'Node Pools', icon: Boxes },
-      { to: '/diagnostics', label: 'Diagnostics', icon: Stethoscope },
-      { to: '/security', label: 'Security', icon: ShieldCheck },
+      { to: '/servers', key: 'servers', icon: Server },
+      { to: '/nodes', key: 'nodes', icon: Waypoints },
+      { to: '/node-pools', key: 'nodePools', icon: Boxes },
+      { to: '/diagnostics', key: 'diagnostics', icon: Stethoscope },
+      { to: '/security', key: 'security', icon: ShieldCheck },
     ],
   },
   {
-    label: 'POLICY',
+    key: 'policy',
     items: [
-      { to: '/policies', label: 'Policy Studio', icon: RouteIcon },
-      { to: '/rule-sets', label: 'Rule Sets', icon: ListTree },
-      { to: '/subscriptions', label: 'Subscriptions', icon: Link2 },
+      { to: '/policies', key: 'policyStudio', icon: RouteIcon },
+      { to: '/rule-sets', key: 'ruleSets', icon: ListTree },
+      { to: '/subscriptions', key: 'subscriptions', icon: Link2 },
     ],
   },
-  { label: 'ACCESS', items: [{ to: '/notifications', label: 'Notifications', icon: Bell }] },
+  { key: 'access', items: [{ to: '/notifications', key: 'notifications', icon: Bell }] },
   {
-    label: 'SYSTEM',
+    key: 'system',
     items: [
-      { to: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
-      { to: '/settings', label: 'Settings', icon: Settings },
+      { to: '/audit-logs', key: 'auditLogs', icon: ScrollText },
+      { to: '/settings', key: 'settings', icon: Settings },
     ],
   },
 ];
@@ -73,6 +75,7 @@ export function Brand() {
 }
 
 export function AppShell({ admin }: { admin: Admin }) {
+  const { t } = useTranslation(['navigation', 'common']);
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -94,14 +97,19 @@ export function AppShell({ admin }: { admin: Admin }) {
     staleTime: 60_000,
     retry: false,
   });
+  const currentNavigationKey = groups
+    .flatMap((group) => group.items)
+    .find((item) => item.to === location.pathname)?.key;
   const unread = notifications.data?.filter((item) => !item.readAt).length ?? 0;
   const xrayState = coreStatus.data?.xray.status;
   const operational = xrayState === 'HEALTHY';
   const systemLabel = coreStatus.isPending
-    ? 'Checking core systems'
+    ? t('navigation:checkingCore')
     : operational
-      ? 'All core systems operational'
-      : `Core status: ${xrayState?.toLowerCase() ?? 'unavailable'}`;
+      ? t('navigation:coreOperational')
+      : t('navigation:coreStatus', {
+          status: xrayState ? t(`common:statusLabels.${xrayState}`) : t('common:unavailable'),
+        });
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
@@ -137,8 +145,8 @@ export function AppShell({ admin }: { admin: Admin }) {
         </div>
         <nav>
           {groups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <span>{group.label}</span>
+            <div className="nav-group" key={group.key}>
+              <span>{t(`navigation:${group.key}`).toUpperCase()}</span>
               {group.items
                 .filter((item) => item.to !== '/diagnostics' || admin.role === 'ADMIN')
                 .map((item) => (
@@ -148,8 +156,8 @@ export function AppShell({ admin }: { admin: Admin }) {
                     className={({ isActive }) => (isActive ? 'active' : '')}
                   >
                     <item.icon size={18} strokeWidth={1.8} />
-                    <b>{item.label}</b>
-                    {item.label === 'Notifications' && unread ? <em>{unread}</em> : null}
+                    <b>{t(`navigation:${item.key}`)}</b>
+                    {item.key === 'notifications' && unread ? <em>{unread}</em> : null}
                   </NavLink>
                 ))}
             </div>
@@ -160,31 +168,39 @@ export function AppShell({ admin }: { admin: Admin }) {
             <i />
             {systemLabel}
           </span>
-          <small>{releaseHealth.data?.version ?? 'Version unavailable'} · Open source</small>
+          <small>
+            {releaseHealth.data?.version ?? t('navigation:versionUnavailable')} ·{' '}
+            {t('navigation:openSource')}
+          </small>
+          <LanguageSwitcher compact />
         </div>
       </aside>
       {sidebarOpen ? (
         <button
           className="sidebar-scrim"
           onClick={() => setSidebarOpen(false)}
-          aria-label="Close navigation"
+          aria-label={t('navigation:closeMenu')}
         />
       ) : null}
       <main className="main-area">
         <header className="topbar">
-          <button className="mobile-menu icon-button" onClick={() => setSidebarOpen(true)}>
+          <button
+            className="mobile-menu icon-button"
+            aria-label={t('navigation:openMenu')}
+            onClick={() => setSidebarOpen(true)}
+          >
             <Menu size={20} />
           </button>
           <h2>
             {location.pathname === '/dashboard'
-              ? 'Infrastructure overview'
-              : (groups
-                  .flatMap((group) => group.items)
-                  .find((item) => item.to === location.pathname)?.label ?? 'ProxyHub')}
+              ? t('navigation:infrastructureOverview')
+              : currentNavigationKey
+                ? t(`navigation:${currentNavigationKey}`)
+                : 'ProxyHub'}
           </h2>
           <button className="search-button" onClick={() => setSearchOpen(true)}>
             <Search size={18} />
-            <span>Search infrastructure and policies...</span>
+            <span>{t('navigation:searchInfrastructure')}</span>
             <kbd>⌘K</kbd>
           </button>
           <div className="top-actions">
@@ -195,10 +211,19 @@ export function AppShell({ admin }: { admin: Admin }) {
               <Bell size={20} />
               {unread ? <i /> : null}
             </button>
-            <button className="icon-button" onClick={toggleTheme}>
+            <LanguageSwitcher compact />
+            <button
+              className="icon-button"
+              aria-label={t('navigation:toggleTheme')}
+              onClick={toggleTheme}
+            >
               {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
             </button>
-            <button className="admin-menu" title="Sign out" onClick={() => void logout()}>
+            <button
+              className="admin-menu"
+              title={t('navigation:signOut')}
+              onClick={() => void logout()}
+            >
               <span>{admin.username.slice(0, 2).toUpperCase()}</span>
               <b>{admin.username}</b>
               <ChevronDown size={15} />
@@ -209,9 +234,10 @@ export function AppShell({ admin }: { admin: Admin }) {
           <Outlet />
         </div>
         <footer>
-          <span>© 2026 ProxyHub · Open source under MIT License</span>
+          <span>© 2026 ProxyHub · MIT License</span>
           <span>
-            <i /> API online <b>{releaseHealth.data?.version ?? 'unknown'}</b>
+            <i /> {t('navigation:apiOnline')}{' '}
+            <b>{releaseHealth.data?.version ?? t('common:unknown')}</b>
           </span>
         </footer>
       </main>
@@ -227,13 +253,13 @@ export function AppShell({ admin }: { admin: Admin }) {
               <Search size={19} />
               <input
                 autoFocus
-                placeholder="Search or jump to..."
+                placeholder={t('navigation:searchPlaceholder')}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') setSearchOpen(false);
                 }}
               />
             </div>
-            <p>Quick navigation</p>
+            <p>{t('navigation:quickNavigation')}</p>
             {groups
               .flatMap((group) => group.items)
               .filter((item) => item.to !== '/diagnostics' || admin.role === 'ADMIN')
@@ -247,7 +273,7 @@ export function AppShell({ admin }: { admin: Admin }) {
                   }}
                 >
                   <item.icon size={17} />
-                  {item.label}
+                  {t(`navigation:${item.key}`)}
                   <Command size={13} />
                 </button>
               ))}

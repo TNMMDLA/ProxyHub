@@ -1,13 +1,31 @@
 import { createHash } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
-import { createSubscriptionSchema, updateSubscriptionSchema } from '@proxyhub/shared';
+import {
+  createSubscriptionSchema,
+  subscriptionPreviewSchema,
+  subscriptionReadinessInputSchema,
+  updateSubscriptionSchema,
+} from '@proxyhub/shared';
 import type { CompilerFormat } from '@proxyhub/policy-core';
 import { audit } from '../audit.js';
 import { requireRole } from '../auth/session.js';
 import { prisma } from '../db.js';
 import { AppError } from '../errors.js';
-import { compileStoredPolicy, maskCompilerOutput } from '../policy-service.js';
+import { compileStoredPolicy } from '../policy-service.js';
 import { hashToken, newOpaqueToken } from '../security/crypto.js';
+import {
+  invalidateReadiness,
+  runSubscriptionReadiness,
+  type SubscriptionCandidate,
+} from '../subscription-readiness.js';
+import {
+  contentTypeFor,
+  generateSubscriptionPreview,
+  subscriptionCapabilities,
+  testSubscriptionResponse,
+} from '../subscription-delivery.js';
+import { assertDeleteAllowed } from '../resource-dependencies.js';
+import { invalidateSetupProgress } from '../setup-progress.js';
 
 const subscriptionSelect = {
   id: true,
@@ -51,6 +69,40 @@ async function compileSubscription(policyId: string, format: CompilerFormat) {
   return compiled;
 }
 
+function candidateFrom(value: {
+  id?: string;
+  policyId: string;
+  format: string;
+  enabled: boolean;
+  expiresAt: Date | string | null;
+}): SubscriptionCandidate {
+  return {
+    ...(value.id ? { id: value.id } : {}),
+    policyId: value.policyId,
+    format: value.format as CompilerFormat,
+    enabled: value.enabled,
+    expiresAt: value.expiresAt,
+  };
+}
+
+async function assertPreflight(candidate: SubscriptionCandidate) {
+  const readiness = await runSubscriptionReadiness(candidate, { cache: false });
+  const lifecycleOnly = readiness.checks
+    .filter((item) => item.blocking && item.status === 'FAILED')
+    .every((item) =>
+      ['SUBSCRIPTION_DISABLED', 'SUBSCRIPTION_EXPIRED'].includes(item.errorCode ?? ''),
+    );
+  if (readiness.status === 'BLOCKED' && !lifecycleOnly) {
+    throw new AppError(
+      'SUBSCRIPTION_NOT_READY',
+      'Subscription dependencies are not ready',
+      422,
+      readiness,
+    );
+  }
+  return readiness;
+}
+
 export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', { preHandler: requireRole('ADMIN', 'OPERATOR', 'VIEWER') }, async () => ({
     success: true,
@@ -60,9 +112,43 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
     }),
   }));
 
+  app.get(
+    '/capabilities',
+    { preHandler: requireRole('ADMIN', 'OPERATOR', 'VIEWER') },
+    async () => ({ success: true, data: subscriptionCapabilities() }),
+  );
+
+  app.post('/readiness', { preHandler: requireRole('ADMIN', 'OPERATOR') }, async (request) => {
+    const input = subscriptionReadinessInputSchema.parse(request.body);
+    if (!input.policyId || !input.format) {
+      throw new AppError('VALIDATION_ERROR', 'Policy and format are required for readiness', 422);
+    }
+    const readiness = await runSubscriptionReadiness(
+      candidateFrom({
+        policyId: input.policyId,
+        format: input.format,
+        enabled: input.enabled ?? true,
+        expiresAt: input.expiresAt ?? null,
+      }),
+    );
+    await audit(
+      request,
+      'SUBSCRIPTION_READINESS_TESTED',
+      'Subscription',
+      readiness.status === 'BLOCKED' ? 'FAILURE' : 'SUCCESS',
+      undefined,
+      {
+        status: readiness.status,
+        format: readiness.format,
+      },
+    );
+    return { success: true, data: readiness };
+  });
+
   app.post('/', { preHandler: requireRole('ADMIN', 'OPERATOR') }, async (request, reply) => {
     const input = createSubscriptionSchema.parse(request.body);
     await assertPolicy(input.policyId);
+    const readiness = await assertPreflight(candidateFrom(input));
     const issued = issueSubscriptionToken();
     const subscription = await prisma.subscription.create({
       data: {
@@ -81,9 +167,11 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
       format: subscription.format,
       tokenPrefix: subscription.tokenPrefix,
     });
+    invalidateReadiness(subscription.id);
+    invalidateSetupProgress();
     return reply.code(201).send({
       success: true,
-      data: { subscription, token: issued.token, path: `/sub/${issued.token}` },
+      data: { subscription, token: issued.token, path: `/sub/${issued.token}`, readiness },
     });
   });
 
@@ -102,6 +190,14 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
     const current = await prisma.subscription.findUnique({ where: { id } });
     if (!current) throw new AppError('SUBSCRIPTION_NOT_FOUND', 'Subscription not found', 404);
     if (patch.policyId) await assertPolicy(patch.policyId);
+    const candidate = candidateFrom({
+      id,
+      policyId: patch.policyId ?? current.policyId,
+      format: patch.format ?? current.format,
+      enabled: patch.enabled ?? current.enabled,
+      expiresAt: patch.expiresAt === undefined ? current.expiresAt : patch.expiresAt,
+    });
+    const readiness = await assertPreflight(candidate);
     const subscription = await prisma.subscription.update({
       where: { id },
       data: {
@@ -125,7 +221,9 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
       fields: Object.keys(patch),
       tokenPrefix: current.tokenPrefix,
     });
-    return { success: true, data: subscription };
+    invalidateReadiness(id);
+    invalidateSetupProgress();
+    return { success: true, data: { ...subscription, readiness } };
   });
 
   app.post(
@@ -152,33 +250,78 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  app.post('/:id/readiness', { preHandler: requireRole('ADMIN', 'OPERATOR') }, async (request) => {
+    const id = idFrom(request);
+    const subscription = await prisma.subscription.findUnique({ where: { id } });
+    if (!subscription) throw new AppError('SUBSCRIPTION_NOT_FOUND', 'Subscription not found', 404);
+    const readiness = await runSubscriptionReadiness(candidateFrom(subscription), {
+      cache: true,
+    });
+    await audit(
+      request,
+      'SUBSCRIPTION_READINESS_TESTED',
+      'Subscription',
+      readiness.status === 'BLOCKED' ? 'FAILURE' : 'SUCCESS',
+      id,
+      {
+        status: readiness.status,
+        format: readiness.format,
+      },
+    );
+    invalidateSetupProgress();
+    return { success: true, data: readiness };
+  });
+
   app.post(
     '/:id/preview',
-    { preHandler: requireRole('ADMIN', 'OPERATOR', 'VIEWER') },
+    {
+      preHandler: requireRole('ADMIN', 'OPERATOR'),
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
     async (request) => {
       const subscription = await prisma.subscription.findUnique({ where: { id: idFrom(request) } });
       if (!subscription)
         throw new AppError('SUBSCRIPTION_NOT_FOUND', 'Subscription not found', 404);
-      try {
-        const { input, result } = await compileSubscription(
-          subscription.policyId,
-          subscription.format as CompilerFormat,
-        );
-        return {
-          success: true,
-          data: { ...result, maskedOutput: maskCompilerOutput(result.output, input.nodes) },
-        };
-      } catch (error) {
-        await prisma.notification.create({
-          data: {
-            level: 'CRITICAL',
-            title: 'Subscription compile failed',
-            message: `${subscription.name} could not be compiled from its current policy.`,
-            eventType: 'SUBSCRIPTION_COMPILE_FAILED',
-          },
-        });
-        throw error;
-      }
+      const { format } = subscriptionPreviewSchema.parse(request.body ?? {});
+      const preview = await generateSubscriptionPreview(candidateFrom(subscription), format);
+      await audit(
+        request,
+        'SUBSCRIPTION_PREVIEW_GENERATED',
+        'Subscription',
+        'SUCCESS',
+        subscription.id,
+        {
+          format: preview.format,
+          truncated: preview.truncated,
+        },
+      );
+      return { success: true, data: preview };
+    },
+  );
+
+  app.post(
+    '/:id/test-response',
+    {
+      preHandler: requireRole('ADMIN', 'OPERATOR'),
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (request) => {
+      const subscription = await prisma.subscription.findUnique({ where: { id: idFrom(request) } });
+      if (!subscription)
+        throw new AppError('SUBSCRIPTION_NOT_FOUND', 'Subscription not found', 404);
+      const responseTest = await testSubscriptionResponse(candidateFrom(subscription));
+      await audit(
+        request,
+        'SUBSCRIPTION_RESPONSE_TESTED',
+        'Subscription',
+        responseTest.accessible ? 'SUCCESS' : 'FAILURE',
+        subscription.id,
+        {
+          statusCode: responseTest.statusCode,
+          accessible: responseTest.accessible,
+        },
+      );
+      return { success: true, data: responseTest };
     },
   );
 
@@ -186,11 +329,14 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
     const id = idFrom(request);
     const subscription = await prisma.subscription.findUnique({ where: { id } });
     if (!subscription) throw new AppError('SUBSCRIPTION_NOT_FOUND', 'Subscription not found', 404);
+    await assertDeleteAllowed('SUBSCRIPTION', id, request);
     await prisma.subscription.delete({ where: { id } });
     await audit(request, 'SUBSCRIPTION_DELETED', 'Subscription', 'SUCCESS', id, {
       name: subscription.name,
       tokenPrefix: subscription.tokenPrefix,
     });
+    invalidateReadiness(id);
+    invalidateSetupProgress();
     return { success: true, data: null };
   });
 };
@@ -236,12 +382,7 @@ export const publicSubscriptionRoutes: FastifyPluginAsync = async (app) => {
       }
       const output = compiled.result.output;
       const etag = `"${createHash('sha256').update(output).digest('hex')}"`;
-      const contentType =
-        subscription.format === 'mihomo'
-          ? 'text/yaml; charset=utf-8'
-          : subscription.format === 'sing-box'
-            ? 'application/json; charset=utf-8'
-            : 'text/plain; charset=utf-8';
+      const contentType = contentTypeFor(subscription.format as CompilerFormat);
       reply.type(contentType).header('cache-control', 'private, no-store').header('etag', etag);
       await prisma.subscription.update({
         where: { id: subscription.id },

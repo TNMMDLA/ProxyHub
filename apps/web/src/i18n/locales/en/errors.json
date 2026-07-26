@@ -1,0 +1,14 @@
+{
+  "viewTitle": "Unable to load this view",
+  "unexpected": "An unexpected application error occurred.",
+  "NETWORK_ERROR": "Unable to reach the ProxyHub API.",
+  "INVALID_RESPONSE": "The ProxyHub API returned an invalid response.",
+  "REQUEST_FAILED": "The request failed.",
+  "AUTH_REQUIRED": "Authentication is required.",
+  "SESSION_EXPIRED": "Your session has expired.",
+  "FORBIDDEN": "You do not have permission to perform this action.",
+  "VALIDATION_ERROR": "Some fields are invalid.",
+  "SUBSCRIPTION_NOT_READY": "The subscription is blocked by unresolved dependencies.",
+  "DELETE_BLOCKED_BY_DEPENDENCY": "Remove the listed dependencies before deleting this resource.",
+  "INTERNAL_ERROR": "An unexpected server error occurred."
+}

@@ -28,6 +28,8 @@ import type {
   RuleSetRecord,
   SubscriptionFormat,
 } from '../types';
+import { useTranslation } from 'react-i18next';
+import { confirmDeleteWithImpact } from '../delete-impact';
 
 const MATCH_TYPES: PolicyMatchType[] = [
   'DOMAIN',
@@ -84,15 +86,16 @@ const emptyRule: RuleForm = {
 };
 
 function poolWarning(pool: PoolRecord | undefined): string | null {
-  if (!pool) return 'Select an existing node pool.';
-  if (!pool.enabled) return 'This node pool is disabled and compilation will emit a warning.';
+  if (!pool) return 'resources:policy.validationPool';
+  if (!pool.enabled) return 'resources:policy.validationPoolDisabled';
   if (!pool.members.some((member) => member.node.enabled)) {
-    return 'This node pool has no enabled nodes and compilation will fail.';
+    return 'resources:policy.validationPoolEmpty';
   }
   return null;
 }
 
 export default function PolicyStudioPage() {
+  const { t } = useTranslation(['resources', 'common']);
   const client = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [policyModal, setPolicyModal] = useState(false);
@@ -107,7 +110,6 @@ export default function PolicyStudioPage() {
   const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
   const [format, setFormat] = useState<SubscriptionFormat>('mihomo');
   const [preview, setPreview] = useState<CompilerPreviewRecord | null>(null);
-  const [revealSecrets, setRevealSecrets] = useState(false);
 
   const policies = useQuery({
     queryKey: ['policies'],
@@ -337,13 +339,16 @@ export default function PolicyStudioPage() {
   const selectedRuleSet = ruleSets.data?.find((item) => item.id === ruleForm.ruleSetId);
   const ruleValidation =
     ruleForm.name.trim().length < 2
-      ? 'Rule name must contain at least two characters.'
+      ? t('resources:policy.validationRuleName')
       : ruleForm.matchSourceType === 'RULE_SET' && !selectedRuleSet
-        ? 'Select an existing rule set.'
+        ? t('resources:policy.validationRuleSet')
         : ruleForm.matchSourceType === 'INLINE' && !ruleForm.matchValue.trim()
-          ? 'Match value is required.'
+          ? t('resources:policy.validationMatchValue')
           : ruleForm.actionType === 'NODE_POOL'
-            ? poolWarning(selectedRulePool)
+            ? (() => {
+                const warningKey = poolWarning(selectedRulePool);
+                return warningKey ? t(warningKey) : null;
+              })()
             : null;
 
   if (policies.isError || pools.isError || ruleSets.isError) {
@@ -354,8 +359,8 @@ export default function PolicyStudioPage() {
   return (
     <>
       <PageHeader
-        title="Policy Studio"
-        description="One ordered policy model compiled deterministically for every supported client."
+        title={t('resources:policy.title')}
+        description={t('resources:policy.description')}
         actions={
           <Button
             onClick={() => {
@@ -364,7 +369,7 @@ export default function PolicyStudioPage() {
               setPolicyModal(true);
             }}
           >
-            <Plus size={16} /> Create policy
+            <Plus size={16} /> {t('resources:policy.create')}
           </Button>
         }
       />
@@ -372,7 +377,7 @@ export default function PolicyStudioPage() {
         <aside className="policy-list-panel">
           <header>
             <div>
-              <h2>Policies</h2>
+              <h2>{t('resources:policy.policies')}</h2>
               <span>{policies.data?.length ?? 0}</span>
             </div>
           </header>
@@ -390,8 +395,15 @@ export default function PolicyStudioPage() {
                   <span>
                     <b>{item.name}</b>
                     <small>
-                      rev {item.revision} · {item._count.rules ?? 0} rules ·{' '}
-                      {item.enabled ? 'compile ready' : 'compile blocked'}
+                      {t('resources:policy.listMeta', {
+                        revision: item.revision,
+                        count: item._count.rules ?? 0,
+                        state: t(
+                          item.enabled
+                            ? 'resources:policy.compileReady'
+                            : 'resources:policy.compileBlocked',
+                        ),
+                      })}
                     </small>
                   </span>
                   <Status value={item.enabled ? 'ENABLED' : 'DISABLED'} />
@@ -399,7 +411,7 @@ export default function PolicyStudioPage() {
               ))}
             </div>
           ) : (
-            <p className="panel-empty">Create the first unified policy.</p>
+            <p className="panel-empty">{t('resources:policy.empty')}</p>
           )}
         </aside>
 
@@ -407,8 +419,8 @@ export default function PolicyStudioPage() {
           {!activeId ? (
             <EmptyState
               icon={<FileCode2 />}
-              title="No policy selected"
-              body="Create a policy to begin defining deterministic routing rules."
+              title={t('resources:policy.noSelection')}
+              body={t('resources:policy.createDescription')}
             />
           ) : policy.isError ? (
             <QueryErrorState error={policy.error} onRetry={() => void policy.refetch()} />
@@ -421,16 +433,18 @@ export default function PolicyStudioPage() {
               <section className="policy-settings">
                 <div className="policy-title-row">
                   <div>
-                    <span className="eyebrow">UNIFIED POLICY · REVISION {current.revision}</span>
+                    <span className="eyebrow">
+                      {t('resources:policy.revisionLabel', { revision: current.revision })}
+                    </span>
                     <h2>{current.name}</h2>
-                    <p>{current.description || 'No description'}</p>
+                    <p>{current.description || t('resources:policy.noDescription')}</p>
                   </div>
                   <div className="policy-actions">
                     <Button variant="secondary" onClick={() => openPolicyDetails(current)}>
-                      <Pencil size={15} /> Edit details
+                      <Pencil size={15} /> {t('resources:policy.edit')}
                     </Button>
                     <Button variant="secondary" onClick={() => duplicatePolicy.mutate(current.id)}>
-                      <Copy size={15} /> Duplicate
+                      <Copy size={15} /> {t('resources:policy.duplicate')}
                     </Button>
                     <Button
                       variant="secondary"
@@ -441,15 +455,18 @@ export default function PolicyStudioPage() {
                         })
                       }
                     >
-                      {current.enabled ? 'Disable' : 'Enable'}
+                      {t(current.enabled ? 'common:disable' : 'common:enable')}
                     </Button>
                     <Button
                       variant="danger"
-                      aria-label={`Delete ${current.name}`}
-                      onClick={() => {
-                        if (window.confirm(`Delete policy “${current.name}”?`))
-                          deletePolicy.mutate(current.id);
-                      }}
+                      aria-label={t('resources:policy.deleteAria', { name: current.name })}
+                      onClick={() =>
+                        void confirmDeleteWithImpact('POLICY', current.id, current.name)
+                          .then((confirmed) => {
+                            if (confirmed) deletePolicy.mutate(current.id);
+                          })
+                          .catch((error: Error) => toast.error(error.message))
+                      }
                     >
                       <Trash2 size={15} />
                     </Button>
@@ -457,16 +474,16 @@ export default function PolicyStudioPage() {
                 </div>
                 <div className="policy-default-row">
                   <label className="field">
-                    <span>Policy name</span>
+                    <span>{t('resources:policy.policyName')}</span>
                     <input
                       value={current.name}
                       onChange={() => undefined}
                       readOnly
-                      aria-label="Policy name"
+                      aria-label={t('resources:policy.policyName')}
                     />
                   </label>
                   <label className="field">
-                    <span>Default action</span>
+                    <span>{t('resources:policy.defaultAction')}</span>
                     <select
                       value={current.defaultAction}
                       onChange={(event) =>
@@ -489,7 +506,7 @@ export default function PolicyStudioPage() {
                   </label>
                   {current.defaultAction === 'NODE_POOL' ? (
                     <label className="field">
-                      <span>Default node pool</span>
+                      <span>{t('resources:policy.defaultPool')}</span>
                       <select
                         value={current.defaultNodePoolId ?? ''}
                         onChange={(event) =>
@@ -499,7 +516,7 @@ export default function PolicyStudioPage() {
                           })
                         }
                       >
-                        <option value="">Select pool</option>
+                        <option value="">{t('resources:policy.selectPool')}</option>
                         {pools.data?.map((pool) => (
                           <option key={pool.id} value={pool.id}>
                             {pool.name}
@@ -514,11 +531,11 @@ export default function PolicyStudioPage() {
               <section className="rule-section">
                 <div className="section-heading rule-heading">
                   <div>
-                    <h2>Visual rule order</h2>
-                    <p>First Match Wins. Drag cards or use arrows to change priority.</p>
+                    <h2>{t('resources:policy.ruleOrder')}</h2>
+                    <p>{t('resources:policy.firstMatch')}</p>
                   </div>
                   <Button onClick={() => openRule()}>
-                    <Plus size={15} /> Add rule
+                    <Plus size={15} /> {t('resources:policy.addRule')}
                   </Button>
                 </div>
                 <div className="rule-filters">
@@ -527,24 +544,24 @@ export default function PolicyStudioPage() {
                     <input
                       value={ruleSearch}
                       onChange={(event) => setRuleSearch(event.target.value)}
-                      placeholder="Search rules..."
+                      placeholder={t('resources:policy.searchRules')}
                     />
                   </label>
                   <select
                     value={enabledFilter}
                     onChange={(event) => setEnabledFilter(event.target.value)}
-                    aria-label="Filter rule status"
+                    aria-label={t('resources:policy.filterStatusAria')}
                   >
-                    <option value="all">All statuses</option>
-                    <option value="true">Enabled</option>
-                    <option value="false">Disabled</option>
+                    <option value="all">{t('resources:policy.allStatuses')}</option>
+                    <option value="true">{t('common:enabled')}</option>
+                    <option value="false">{t('common:disabled')}</option>
                   </select>
                   <select
                     value={actionFilter}
                     onChange={(event) => setActionFilter(event.target.value)}
-                    aria-label="Filter rule action"
+                    aria-label={t('resources:policy.filterActionAria')}
                   >
-                    <option value="all">All actions</option>
+                    <option value="all">{t('resources:policy.allActions')}</option>
                     {ACTIONS.map((action) => (
                       <option key={action}>{action}</option>
                     ))}
@@ -581,13 +598,18 @@ export default function PolicyStudioPage() {
                             </code>
                             <span>
                               {rule.matchSourceType === 'RULE_SET'
-                                ? `${rule.ruleSet?.name ?? 'Missing rule set'} · ${String(rule.ruleSet?.ruleCount ?? 0)} rules · ${rule.ruleSet?.status ?? 'UNAVAILABLE'}`
+                                ? t('resources:policy.ruleSetMeta', {
+                                    name:
+                                      rule.ruleSet?.name ?? t('resources:policy.missingRuleSet'),
+                                    count: rule.ruleSet?.ruleCount ?? 0,
+                                    status: rule.ruleSet?.status ?? 'UNAVAILABLE',
+                                  })
                                 : rule.matchValue}
                             </span>
                             <i>→</i>
                             <code>
                               {rule.actionType === 'NODE_POOL'
-                                ? (rule.nodePool?.name ?? 'Missing pool')
+                                ? (rule.nodePool?.name ?? t('resources:policy.missingPool'))
                                 : rule.actionType}
                             </code>
                           </div>
@@ -595,24 +617,27 @@ export default function PolicyStudioPage() {
                         </div>
                         <div className="rule-actions">
                           <button
-                            aria-label={`Move ${rule.name} up`}
+                            aria-label={t('resources:policy.moveUpAria', { name: rule.name })}
                             onClick={() => moveRule(rule.id, -1)}
                             disabled={rules[0]?.id === rule.id}
                           >
                             <ArrowUp size={14} />
                           </button>
                           <button
-                            aria-label={`Move ${rule.name} down`}
+                            aria-label={t('resources:policy.moveDownAria', { name: rule.name })}
                             onClick={() => moveRule(rule.id, 1)}
                             disabled={rules.at(-1)?.id === rule.id}
                           >
                             <ArrowDown size={14} />
                           </button>
-                          <button aria-label={`Edit ${rule.name}`} onClick={() => openRule(rule)}>
+                          <button
+                            aria-label={t('resources:policy.editAria', { name: rule.name })}
+                            onClick={() => openRule(rule)}
+                          >
                             <Pencil size={14} />
                           </button>
                           <button
-                            aria-label={`Toggle ${rule.name}`}
+                            aria-label={t('resources:policy.toggleAria', { name: rule.name })}
                             onClick={() =>
                               toggleRule.mutate({ ruleId: rule.id, enabled: !rule.enabled })
                             }
@@ -620,7 +645,7 @@ export default function PolicyStudioPage() {
                             {rule.enabled ? <EyeOff size={14} /> : <Eye size={14} />}
                           </button>
                           <button
-                            aria-label={`Delete ${rule.name}`}
+                            aria-label={t('resources:policy.deleteRuleAria', { name: rule.name })}
                             onClick={() => deleteRule.mutate(rule.id)}
                           >
                             <Trash2 size={14} />
@@ -630,22 +655,25 @@ export default function PolicyStudioPage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="panel-empty">No rules match the current filters.</p>
+                  <p className="panel-empty">{t('resources:policy.noMatches')}</p>
                 )}
               </section>
 
               <section className="compile-panel">
                 <div className="section-heading">
                   <div>
-                    <h2>Compile preview</h2>
-                    <p>Generated by policy-core; preview never touches Xray runtime.</p>
+                    <h2>{t('resources:policy.compilePreview')}</h2>
+                    <p>{t('resources:policy.previewNote')}</p>
                   </div>
                   <Button
                     variant="secondary"
                     onClick={() => compile.mutate(format)}
                     disabled={compile.isPending}
                   >
-                    <FileCode2 size={15} /> {compile.isPending ? 'Compiling...' : 'Compile'}
+                    <FileCode2 size={15} />{' '}
+                    {t(
+                      compile.isPending ? 'resources:policy.compiling' : 'resources:policy.compile',
+                    )}
                   </Button>
                 </div>
                 <div className="preview-tabs">
@@ -661,32 +689,24 @@ export default function PolicyStudioPage() {
                       {item}
                     </button>
                   ))}
-                  <button
-                    className="reveal-button"
-                    onClick={() => setRevealSecrets((value) => !value)}
-                  >
-                    {revealSecrets ? <EyeOff size={14} /> : <Eye size={14} />}
-                    {revealSecrets ? 'Mask credentials' : 'Show full output'}
-                  </button>
                 </div>
                 {preview ? (
                   <>
                     <div className="compile-summary">
                       <Status value={preview.success ? 'SUCCESS' : 'FAILURE'} />
                       <span>
-                        {preview.metadata.expandedRuleCount} compiled rules from{' '}
-                        {preview.metadata.sourceRuleCount} policy rules and{' '}
-                        {preview.metadata.ruleSetCount} rule sets · {preview.metadata.nodeCount}{' '}
-                        nodes · revision {preview.metadata.revision}
+                        {t('resources:policy.compileSummary', {
+                          expanded: preview.metadata.expandedRuleCount,
+                          source: preview.metadata.sourceRuleCount,
+                          ruleSets: preview.metadata.ruleSetCount,
+                          nodes: preview.metadata.nodeCount,
+                          revision: preview.metadata.revision,
+                        })}
                       </span>
                       <button
-                        onClick={() =>
-                          void navigator.clipboard.writeText(
-                            revealSecrets ? preview.output : preview.maskedOutput,
-                          )
-                        }
+                        onClick={() => void navigator.clipboard.writeText(preview.maskedOutput)}
                       >
-                        <Copy size={14} /> Copy
+                        <Copy size={14} /> {t('common:copy')}
                       </button>
                     </div>
                     {preview.errors.length || preview.warnings.length ? (
@@ -711,13 +731,11 @@ export default function PolicyStudioPage() {
                       </div>
                     ) : null}
                     <pre className="config-preview">
-                      <code>{revealSecrets ? preview.output : preview.maskedOutput}</code>
+                      <code>{preview.maskedOutput}</code>
                     </pre>
                   </>
                 ) : (
-                  <p className="panel-empty">
-                    Choose an adapter and compile to inspect deterministic output.
-                  </p>
+                  <p className="panel-empty">{t('resources:policy.compileEmpty')}</p>
                 )}
               </section>
             </>
@@ -727,8 +745,8 @@ export default function PolicyStudioPage() {
 
       {policyModal ? (
         <Modal
-          title={editingPolicyDetails ? 'Edit policy details' : 'Create policy'}
-          description="Define one client-independent policy."
+          title={editingPolicyDetails ? t('resources:policy.edit') : t('resources:policy.create')}
+          description={t('resources:policy.formDescription')}
           onClose={() => setPolicyModal(false)}
         >
           <form
@@ -741,7 +759,7 @@ export default function PolicyStudioPage() {
             }}
           >
             <label className="field">
-              <span>Policy name</span>
+              <span>{t('resources:policy.policyName')}</span>
               <input
                 autoFocus
                 value={policyForm.name}
@@ -749,7 +767,7 @@ export default function PolicyStudioPage() {
               />
             </label>
             <label className="field">
-              <span>Description</span>
+              <span>{t('common:description')}</span>
               <textarea
                 value={policyForm.description}
                 onChange={(event) =>
@@ -758,7 +776,7 @@ export default function PolicyStudioPage() {
               />
             </label>
             <label className="field">
-              <span>Default action</span>
+              <span>{t('resources:policy.defaultAction')}</span>
               <select
                 value={policyForm.defaultAction}
                 onChange={(event) =>
@@ -775,14 +793,14 @@ export default function PolicyStudioPage() {
             </label>
             {policyForm.defaultAction === 'NODE_POOL' ? (
               <label className="field">
-                <span>Default node pool</span>
+                <span>{t('resources:policy.defaultPool')}</span>
                 <select
                   value={policyForm.defaultNodePoolId}
                   onChange={(event) =>
                     setPolicyForm({ ...policyForm, defaultNodePoolId: event.target.value })
                   }
                 >
-                  <option value="">Select pool</option>
+                  <option value="">{t('resources:policy.selectPool')}</option>
                   {pools.data?.map((pool) => (
                     <option key={pool.id} value={pool.id}>
                       {pool.name}
@@ -800,13 +818,13 @@ export default function PolicyStudioPage() {
                 }
               />
               <span>
-                <b>Policy enabled</b>
-                <small>Disabled policies cannot be compiled or served.</small>
+                <b>{t('resources:policy.policyEnabled')}</b>
+                <small>{t('resources:policy.policyEnabledHelp')}</small>
               </span>
             </label>
             <div className="modal-actions">
               <Button type="button" variant="secondary" onClick={() => setPolicyModal(false)}>
-                Cancel
+                {t('common:cancel')}
               </Button>
               <Button
                 type="submit"
@@ -817,7 +835,9 @@ export default function PolicyStudioPage() {
                   (policyForm.defaultAction === 'NODE_POOL' && !policyForm.defaultNodePoolId)
                 }
               >
-                {editingPolicyDetails ? 'Save changes' : 'Create policy'}
+                {t(
+                  editingPolicyDetails ? 'resources:policy.saveChanges' : 'resources:policy.create',
+                )}
               </Button>
             </div>
           </form>
@@ -826,8 +846,8 @@ export default function PolicyStudioPage() {
 
       {ruleModal ? (
         <Modal
-          title={editingRuleId ? 'Edit policy rule' : 'Add policy rule'}
-          description="Rules are evaluated in visible order using First Match Wins."
+          title={editingRuleId ? t('resources:policy.editRule') : t('resources:policy.addRule')}
+          description={t('resources:policy.ruleDescription')}
           onClose={() => setRuleModal(false)}
         >
           <form
@@ -840,7 +860,7 @@ export default function PolicyStudioPage() {
           >
             <div className="form-grid">
               <label className="field">
-                <span>Rule name</span>
+                <span>{t('resources:policy.ruleName')}</span>
                 <input
                   autoFocus
                   value={ruleForm.name}
@@ -848,7 +868,7 @@ export default function PolicyStudioPage() {
                 />
               </label>
               <label className="field">
-                <span>Match source</span>
+                <span>{t('resources:policy.matchSource')}</span>
                 <select
                   value={ruleForm.matchSourceType}
                   onChange={(event) =>
@@ -859,15 +879,15 @@ export default function PolicyStudioPage() {
                     })
                   }
                 >
-                  <option value="INLINE">Inline</option>
-                  <option value="RULE_SET">Rule Set</option>
+                  <option value="INLINE">{t('resources:policy.inline')}</option>
+                  <option value="RULE_SET">{t('resources:policy.ruleSet')}</option>
                 </select>
               </label>
             </div>
             {ruleForm.matchSourceType === 'INLINE' ? (
               <div className="form-grid">
                 <label className="field">
-                  <span>Match type</span>
+                  <span>{t('resources:policy.matchType')}</span>
                   <select
                     value={ruleForm.matchType}
                     onChange={(event) =>
@@ -880,7 +900,7 @@ export default function PolicyStudioPage() {
                   </select>
                 </label>
                 <label className="field">
-                  <span>Match value</span>
+                  <span>{t('resources:policy.matchValue')}</span>
                   <input
                     value={ruleForm.matchValue}
                     onChange={(event) =>
@@ -892,15 +912,19 @@ export default function PolicyStudioPage() {
               </div>
             ) : (
               <label className="field">
-                <span>Rule Set</span>
+                <span>{t('resources:policy.ruleSet')}</span>
                 <select
                   value={ruleForm.ruleSetId}
                   onChange={(event) => setRuleForm({ ...ruleForm, ruleSetId: event.target.value })}
                 >
-                  <option value="">Select rule set</option>
+                  <option value="">{t('resources:policy.selectRuleSet')}</option>
                   {ruleSets.data?.map((ruleSet) => (
                     <option key={ruleSet.id} value={ruleSet.id}>
-                      {ruleSet.name} · {ruleSet.ruleCount} rules · {ruleSet.status}
+                      {t('resources:policy.ruleSetMeta', {
+                        name: ruleSet.name,
+                        count: ruleSet.ruleCount,
+                        status: ruleSet.status,
+                      })}
                     </option>
                   ))}
                 </select>
@@ -908,15 +932,17 @@ export default function PolicyStudioPage() {
                 ['STALE', 'EMPTY', 'ERROR', 'DISABLED'].includes(selectedRuleSet.status) ? (
                   <small className="validation-warning">
                     {selectedRuleSet.status === 'STALE'
-                      ? 'Compilation will use the last known good cache.'
-                      : `This rule set is ${selectedRuleSet.status.toLowerCase()}.`}
+                      ? t('resources:policy.ruleSetStaleLkg')
+                      : t('resources:policy.ruleSetState', {
+                          status: selectedRuleSet.status.toLowerCase(),
+                        })}
                   </small>
                 ) : null}
               </label>
             )}
             <div className="form-grid">
               <label className="field">
-                <span>Action</span>
+                <span>{t('resources:policy.action')}</span>
                 <select
                   value={ruleForm.actionType}
                   onChange={(event) =>
@@ -934,18 +960,18 @@ export default function PolicyStudioPage() {
               </label>
               {ruleForm.actionType === 'NODE_POOL' ? (
                 <label className="field">
-                  <span>Node pool</span>
+                  <span>{t('resources:policy.nodePool')}</span>
                   <select
                     value={ruleForm.nodePoolId}
                     onChange={(event) =>
                       setRuleForm({ ...ruleForm, nodePoolId: event.target.value })
                     }
                   >
-                    <option value="">Select pool</option>
+                    <option value="">{t('resources:policy.selectPool')}</option>
                     {pools.data?.map((pool) => (
                       <option key={pool.id} value={pool.id}>
                         {pool.name}
-                        {!pool.enabled ? ' (disabled)' : ''}
+                        {!pool.enabled ? t('resources:policy.disabledSuffix') : ''}
                       </option>
                     ))}
                   </select>
@@ -955,7 +981,7 @@ export default function PolicyStudioPage() {
               )}
             </div>
             <label className="field">
-              <span>Description</span>
+              <span>{t('common:description')}</span>
               <textarea
                 value={ruleForm.description}
                 onChange={(event) => setRuleForm({ ...ruleForm, description: event.target.value })}
@@ -968,8 +994,8 @@ export default function PolicyStudioPage() {
                 onChange={(event) => setRuleForm({ ...ruleForm, enabled: event.target.checked })}
               />
               <span>
-                <b>Rule enabled</b>
-                <small>Disabled rules stay stored but are excluded from compilation.</small>
+                <b>{t('resources:policy.ruleEnabled')}</b>
+                <small>{t('resources:policy.ruleEnabledHelp')}</small>
               </span>
             </label>
             {ruleValidation ? (
@@ -984,12 +1010,12 @@ export default function PolicyStudioPage() {
               </p>
             ) : (
               <p className="validation-success">
-                <Check size={14} /> Rule is ready to save.
+                <Check size={14} /> {t('resources:policy.ruleReady')}
               </p>
             )}
             <div className="modal-actions">
               <Button type="button" variant="secondary" onClick={() => setRuleModal(false)}>
-                Cancel
+                {t('common:cancel')}
               </Button>
               <Button
                 type="submit"
@@ -1000,7 +1026,7 @@ export default function PolicyStudioPage() {
                   )
                 }
               >
-                Save rule
+                {t('resources:policy.saveRule')}
               </Button>
             </div>
           </form>

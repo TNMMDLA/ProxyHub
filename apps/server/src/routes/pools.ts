@@ -100,6 +100,9 @@ export const poolRoutes: FastifyPluginAsync = async (app) => {
       ...references.policyRules.map((rule) => rule.policy),
     ].filter((policy, index, all) => all.findIndex((item) => item.id === policy.id) === index);
     if (policies.length) {
+      await audit(request, 'DELETE_BLOCKED_BY_DEPENDENCY', 'NodePool', 'FAILURE', id, {
+        codes: ['POLICY_WOULD_LOSE_NODE_POOL'],
+      });
       throw new AppError('NODE_POOL_IN_USE', 'Node pool is referenced by policies', 409, {
         policies,
       });

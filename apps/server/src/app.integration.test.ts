@@ -801,6 +801,158 @@ describe('ProxyHub foundation API', () => {
     });
     expect(preview.statusCode, preview.body).toBe(200);
     expect(preview.json().data.format).toBe('raw');
+    expect(preview.json().data.sanitized).toBe(true);
+    expect(preview.json().data.output).not.toContain((await prisma.node.findFirstOrThrow()).uuid);
+    expect(preview.json().data.output).not.toContain(subscriptionToken);
+
+    const accessBeforeChecks = (
+      await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId } })
+    ).lastAccessAt?.toISOString();
+    const readiness = await app.inject({
+      method: 'POST',
+      url: `/api/subscriptions/${subscriptionId}/readiness`,
+      headers: { cookie },
+    });
+    expect(readiness.statusCode, readiness.body).toBe(200);
+    expect(['READY', 'READY_WITH_WARNINGS']).toContain(readiness.json().data.status);
+    expect(readiness.json().data.checks).toContainEqual(
+      expect.objectContaining({ id: 'compile-dry-run', status: 'PASSED' }),
+    );
+
+    const responseTest = await app.inject({
+      method: 'POST',
+      url: `/api/subscriptions/${subscriptionId}/test-response`,
+      headers: { cookie },
+    });
+    expect(responseTest.statusCode, responseTest.body).toBe(200);
+    expect(responseTest.json().data).toMatchObject({
+      accessible: true,
+      statusCode: 200,
+      contentType: 'text/plain; charset=utf-8',
+      cacheControl: 'private, no-store',
+      format: 'raw',
+      token: '[REDACTED]',
+    });
+    expect(responseTest.json().data.etag).toMatch(/^"[a-f0-9]{64}"$/u);
+    expect(
+      (
+        await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId } })
+      ).lastAccessAt?.toISOString(),
+    ).toBe(accessBeforeChecks);
+
+    const capabilities = await app.inject({
+      method: 'GET',
+      url: '/api/subscriptions/capabilities',
+      headers: { cookie },
+    });
+    expect(capabilities.statusCode).toBe(200);
+    expect(capabilities.json().data).toHaveLength(3);
+    expect(capabilities.json().data).toContainEqual(
+      expect.objectContaining({
+        format: 'raw',
+        features: expect.objectContaining({ routingRules: 'UNSUPPORTED' }),
+      }),
+    );
+
+    const policyDependencies = await app.inject({
+      method: 'GET',
+      url: `/api/resources/policy/${policyId}/dependencies`,
+      headers: { cookie },
+    });
+    expect(policyDependencies.statusCode, policyDependencies.body).toBe(200);
+    expect(policyDependencies.json().data.usedBy).toContainEqual(
+      expect.objectContaining({
+        resourceType: 'SUBSCRIPTION',
+        resourceId: subscriptionId,
+        relation: 'POLICY_USED_BY_SUBSCRIPTION',
+      }),
+    );
+    expect(policyDependencies.body).not.toContain(subscriptionToken);
+
+    const policyDeleteImpact = await app.inject({
+      method: 'GET',
+      url: `/api/resources/policy/${policyId}/delete-impact`,
+      headers: { cookie },
+    });
+    expect(policyDeleteImpact.json().data).toMatchObject({
+      status: 'BLOCKED',
+      codes: ['SUBSCRIPTION_WOULD_LOSE_POLICY'],
+    });
+
+    const blockedServerDelete = await app.inject({
+      method: 'DELETE',
+      url: `/api/servers/${serverId}`,
+      headers: { cookie },
+    });
+    expect(blockedServerDelete.statusCode, blockedServerDelete.body).toBe(409);
+    expect(blockedServerDelete.json().error.code).toBe('DELETE_BLOCKED_BY_DEPENDENCY');
+    expect(await prisma.server.findUnique({ where: { id: serverId } })).not.toBeNull();
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          action: 'DELETE_BLOCKED_BY_DEPENDENCY',
+          resource: 'SERVER',
+          resourceId: serverId,
+        },
+      }),
+    ).toBe(1);
+
+    const setupProgress = await app.inject({
+      method: 'GET',
+      url: '/api/setup/progress',
+      headers: { cookie },
+    });
+    expect(setupProgress.statusCode, setupProgress.body).toBe(200);
+    expect(setupProgress.json().data.totalSteps).toBe(9);
+    expect(setupProgress.body).not.toContain(subscriptionToken);
+    expect(await prisma.auditLog.count({ where: { action: 'SETUP_PROGRESS_VIEWED' } })).toBe(0);
+
+    const poolNode = await prisma.node.findFirstOrThrow({ where: { enabled: true } });
+    await app.inject({
+      method: 'PUT',
+      url: `/api/node-pools/${policyPoolId}`,
+      headers: { cookie },
+      payload: {
+        name: 'Policy Pool',
+        description: 'Compiler integration pool',
+        region: 'Global',
+        strategy: 'MANUAL',
+        enabled: true,
+        nodeIds: [],
+      },
+    });
+    const beforeBlockedUpdate = await prisma.subscription.findUniqueOrThrow({
+      where: { id: subscriptionId },
+    });
+    const blockedUpdate = await app.inject({
+      method: 'PATCH',
+      url: `/api/subscriptions/${subscriptionId}`,
+      headers: { cookie },
+      payload: { name: 'Must Not Persist' },
+    });
+    expect(blockedUpdate.statusCode, blockedUpdate.body).toBe(422);
+    expect(blockedUpdate.json().error.code).toBe('SUBSCRIPTION_NOT_READY');
+    const afterBlockedUpdate = await prisma.subscription.findUniqueOrThrow({
+      where: { id: subscriptionId },
+    });
+    expect(afterBlockedUpdate.name).toBe(beforeBlockedUpdate.name);
+    expect(afterBlockedUpdate.tokenHash).toBe(beforeBlockedUpdate.tokenHash);
+    expect(afterBlockedUpdate.lastAccessAt?.toISOString()).toBe(
+      beforeBlockedUpdate.lastAccessAt?.toISOString(),
+    );
+    await app.inject({
+      method: 'PUT',
+      url: `/api/node-pools/${policyPoolId}`,
+      headers: { cookie },
+      payload: {
+        name: 'Policy Pool',
+        description: 'Compiler integration pool',
+        region: 'Global',
+        strategy: 'MANUAL',
+        enabled: true,
+        nodeIds: [poolNode.id],
+      },
+    });
 
     const deleted = await app.inject({
       method: 'DELETE',

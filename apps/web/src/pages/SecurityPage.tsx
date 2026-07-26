@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, KeyRound, Laptop, LockKeyhole, ShieldCheck, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
-import { api, formatRelative } from '../api';
+import { api } from '../api';
 import { Button, Input, Modal, PageHeader, QueryErrorState } from '../components/ui';
 import type { Admin } from '../types';
+import { useTranslation } from 'react-i18next';
+import { formatRelativeTime } from '../i18n/formatters';
+import type { SupportedLocale } from '../i18n';
 
 interface SessionRecord {
   id: string;
@@ -16,6 +19,8 @@ interface SessionRecord {
 }
 
 export default function SecurityPage({ admin }: { admin: Admin }) {
+  const { t, i18n } = useTranslation('security');
+  const locale: SupportedLocale = i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en';
   const client = useQueryClient();
   const [setup, setSetup] = useState<{ secret: string; qrCode: string } | null>(null);
   const [code, setCode] = useState('');
@@ -51,13 +56,13 @@ export default function SecurityPage({ admin }: { admin: Admin }) {
   });
   const checks = [
     {
-      title: 'Two-factor authentication',
+      title: t('twoFactor'),
       passed: admin.totpEnabled,
-      detail: admin.totpEnabled ? 'TOTP is enabled' : 'Enable TOTP to protect the admin account',
+      detail: admin.totpEnabled ? t('totpEnabled') : t('enableTotp'),
     },
-    { title: 'Encrypted secrets', passed: true, detail: 'AES-256-GCM at rest' },
-    { title: 'Secure session cookies', passed: true, detail: 'HttpOnly · SameSite=Strict' },
-    { title: 'Password hashing', passed: true, detail: 'Argon2id · 64 MiB memory cost' },
+    { title: t('encryptedSecrets'), passed: true, detail: t('encryptedDetail') },
+    { title: t('sessionCookies'), passed: true, detail: t('sessionDetail') },
+    { title: t('passwordHashing'), passed: true, detail: t('passwordDetail') },
   ];
   const score = checks.filter((item) => item.passed).length * 25;
   if (sessions.isError) {
@@ -65,10 +70,7 @@ export default function SecurityPage({ admin }: { admin: Admin }) {
   }
   return (
     <>
-      <PageHeader
-        title="Security"
-        description="Authentication posture, protected sessions and operational recommendations."
-      />
+      <PageHeader title={t('title')} description={t('description')} />
       <div className="security-layout">
         <section className="security-score-card">
           <div
@@ -81,11 +83,8 @@ export default function SecurityPage({ admin }: { admin: Admin }) {
             </div>
           </div>
           <div>
-            <h2>{score === 100 ? 'Strong security posture' : 'One recommendation remains'}</h2>
-            <p>
-              ProxyHub reports configuration guidance and never modifies SSH or firewall policy
-              automatically.
-            </p>
+            <h2>{score === 100 ? t('strongPosture') : t('recommendation')}</h2>
+            <p>{t('boundary')}</p>
           </div>
         </section>
         <section className="security-checks">
@@ -100,10 +99,10 @@ export default function SecurityPage({ admin }: { admin: Admin }) {
               </div>
               {!item.passed ? (
                 <Button onClick={() => startSetup.mutate()} disabled={startSetup.isPending}>
-                  Enable
+                  {t('enable')}
                 </Button>
               ) : (
-                <span className="verified">Verified</span>
+                <span className="verified">{t('verified')}</span>
               )}
             </article>
           ))}
@@ -112,11 +111,11 @@ export default function SecurityPage({ admin }: { admin: Admin }) {
       <section className="table-panel sessions-panel">
         <div className="section-heading">
           <div>
-            <h2>Active sessions</h2>
-            <p>Review devices currently authenticated to this account.</p>
+            <h2>{t('activeSessions')}</h2>
+            <p>{t('sessionsDescription')}</p>
           </div>
           <Button variant="secondary" onClick={() => logoutAll.mutate()}>
-            Log out all
+            {t('logoutAll')}
           </Button>
         </div>
         <div className="session-list">
@@ -126,31 +125,32 @@ export default function SecurityPage({ admin }: { admin: Admin }) {
               <div>
                 <b>{session.userAgent.split(' ').slice(0, 4).join(' ')}</b>
                 <small>
-                  {session.ip} · active {formatRelative(session.lastUsedAt)}
+                  {session.ip} ·{' '}
+                  {t('active', { time: formatRelativeTime(session.lastUsedAt, locale) })}
                 </small>
               </div>
-              {index === 0 ? <span className="current-session">Current</span> : null}
+              {index === 0 ? <span className="current-session">{t('current')}</span> : null}
             </article>
           ))}
         </div>
       </section>
       {setup ? (
         <Modal
-          title="Enable two-factor authentication"
-          description="Scan the QR code with your authenticator, then enter the current code."
+          title={t('enable2fa')}
+          description={t('setupDescription')}
           onClose={() => setSetup(null)}
         >
           <div className="totp-setup">
-            <img src={setup.qrCode} alt="TOTP setup QR code" />
+            <img src={setup.qrCode} alt={t('qrAlt')} />
             <div className="manual-secret">
-              <span>Manual secret</span>
+              <span>{t('manualSecret')}</span>
               <code>{setup.secret}</code>
               <button onClick={() => void navigator.clipboard.writeText(setup.secret)}>
                 <Copy size={15} />
               </button>
             </div>
             <Input
-              label="6-digit verification code"
+              label={t('verificationCode')}
               inputMode="numeric"
               pattern="[0-9]{6}"
               value={code}
@@ -162,15 +162,15 @@ export default function SecurityPage({ admin }: { admin: Admin }) {
               disabled={code.length !== 6 || enable.isPending}
             >
               <LockKeyhole size={16} />
-              Verify and enable
+              {t('verifyEnable')}
             </Button>
           </div>
         </Modal>
       ) : null}
       {recoveryCodes ? (
         <Modal
-          title="Save your recovery codes"
-          description="Each code can be used once. ProxyHub stores only Argon2id hashes."
+          title={t('saveRecovery')}
+          description={t('recoveryDescription')}
           onClose={() => setRecoveryCodes(null)}
         >
           <div className="recovery-codes">
@@ -181,15 +181,15 @@ export default function SecurityPage({ admin }: { admin: Admin }) {
           <Button
             onClick={() => {
               void navigator.clipboard.writeText(recoveryCodes.join('\n'));
-              toast.success('Recovery codes copied');
+              toast.success(t('recoveryCopied'));
             }}
           >
             <Copy size={16} />
-            Copy all codes
+            {t('copyCodes')}
           </Button>
           <p className="critical-note">
             <ShieldCheck size={16} />
-            Store these codes somewhere safe. They will not be shown again.
+            {t('recoveryWarning')}
           </p>
         </Modal>
       ) : null}

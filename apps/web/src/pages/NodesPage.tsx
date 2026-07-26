@@ -32,8 +32,11 @@ import {
   initialForm,
   type CompatibilityView,
 } from './reality-compatibility-state';
+import { useTranslation } from 'react-i18next';
+import { confirmDeleteWithImpact } from '../delete-impact';
 
 export default function NodesPage() {
+  const { t } = useTranslation(['resources', 'common']);
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(params.get('create') === '1');
@@ -87,7 +90,7 @@ export default function NodesPage() {
       });
     },
     onSuccess: () => {
-      toast.success('Reality node created and validated');
+      toast.success(t('resources:nodes.createReality'));
       closeCreate();
       setForm(initialForm);
       void client.invalidateQueries({ queryKey: ['nodes'] });
@@ -113,7 +116,7 @@ export default function NodesPage() {
         }),
       }),
     onSuccess: () => {
-      toast.success('Reality node updated and validated');
+      toast.success(t('resources:nodes.editReality'));
       setEditing(undefined);
       void client.invalidateQueries({ queryKey: ['nodes'] });
     },
@@ -151,7 +154,7 @@ export default function NodesPage() {
     try {
       const result = await getShare(id);
       await navigator.clipboard.writeText(result.uri);
-      toast.success('URI copied');
+      toast.success(t('common:copied'));
     } catch (error) {
       toast.error((error as Error).message);
     }
@@ -171,12 +174,12 @@ export default function NodesPage() {
   return (
     <>
       <PageHeader
-        title="Nodes"
-        description="VLESS Reality entry points with encrypted credentials and validated configuration."
+        title={t('resources:nodes.title')}
+        description={t('resources:nodes.description')}
         actions={
           <Button onClick={openCreate}>
             <Plus size={16} />
-            Create node
+            {t('resources:nodes.create')}
           </Button>
         }
       />
@@ -186,12 +189,12 @@ export default function NodesPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Node</th>
-                  <th>Server</th>
-                  <th>Endpoint</th>
-                  <th>Status</th>
-                  <th>Latency</th>
-                  <th>Pools</th>
+                  <th>{t('resources:nodes.node')}</th>
+                  <th>{t('resources:nodes.server')}</th>
+                  <th>{t('resources:nodes.endpoint')}</th>
+                  <th>{t('common:status')}</th>
+                  <th>{t('resources:nodes.latency')}</th>
+                  <th>{t('resources:nodes.pools')}</th>
                   <th />
                 </tr>
               </thead>
@@ -212,18 +215,21 @@ export default function NodesPage() {
                     <td>
                       <Status value={node.status} />
                     </td>
-                    <td>{node.latency ? `${node.latency} ms` : 'Not checked'}</td>
+                    <td>{node.latency ? `${node.latency} ms` : t('resources:nodes.notChecked')}</td>
                     <td>{node.pools.length}</td>
                     <td>
                       <div className="row-actions">
-                        <button title="Share" onClick={() => void openShare(node.id)}>
+                        <button
+                          title={t('resources:nodes.share')}
+                          onClick={() => void openShare(node.id)}
+                        >
                           <QrCode size={16} />
                         </button>
-                        <button title="Copy URI" onClick={() => void copyUri(node.id)}>
+                        <button title={t('common:copy')} onClick={() => void copyUri(node.id)}>
                           <Copy size={16} />
                         </button>
                         <button
-                          title="Edit"
+                          title={t('common:edit')}
                           onClick={() => {
                             setEditCompatibility(null);
                             setEditing({
@@ -240,24 +246,28 @@ export default function NodesPage() {
                           <Pencil size={16} />
                         </button>
                         <button
-                          title="Clone"
+                          title={t('resources:nodes.clone')}
                           disabled={clone.isPending}
                           onClick={() => clone.mutate(node.id)}
                         >
                           <CopyPlus size={16} />
                         </button>
                         <button
-                          title={node.enabled ? 'Disable' : 'Enable'}
+                          title={node.enabled ? t('common:disabled') : t('common:enabled')}
                           disabled={toggle.isPending}
                           onClick={() => toggle.mutate(node)}
                         >
                           {node.enabled ? <PowerOff size={16} /> : <Power size={16} />}
                         </button>
                         <button
-                          title="Delete"
-                          onClick={() => {
-                            if (confirm(`Delete ${node.name}?`)) remove.mutate(node.id);
-                          }}
+                          title={t('common:delete')}
+                          onClick={() =>
+                            void confirmDeleteWithImpact('NODE', node.id, node.name)
+                              .then((confirmed) => {
+                                if (confirmed) remove.mutate(node.id);
+                              })
+                              .catch((error: Error) => toast.error(error.message))
+                          }
                         >
                           <Trash2 size={16} />
                         </button>
@@ -272,20 +282,20 @@ export default function NodesPage() {
       ) : (
         <EmptyState
           icon={<RadioTower />}
-          title="No nodes yet"
-          body="Create a VLESS Reality node. ProxyHub will generate UUID, X25519 keys and Short ID automatically."
+          title={t('resources:nodes.noNodes')}
+          body={t('resources:nodes.empty')}
           action={
             <Button onClick={openCreate}>
               <Plus size={16} />
-              Create first node
+              {t('resources:nodes.create')}
             </Button>
           }
         />
       )}
       {createOpen ? (
         <Modal
-          title="Create VLESS Reality node"
-          description="Quick mode generates cryptographic fields securely."
+          title={t('resources:nodes.createReality')}
+          description={t('resources:nodes.createDescription')}
           onClose={closeCreate}
         >
           <form
@@ -297,14 +307,14 @@ export default function NodesPage() {
           >
             <div className="form-grid">
               <Input
-                label="Node name"
+                label={t('common:name')}
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Tokyo Edge"
+                placeholder={t('resources:nodes.namePlaceholder')}
                 required
               />
               <label className="field">
-                <span>Server</span>
+                <span>{t('resources:nodes.server')}</span>
                 <select
                   value={form.serverId || servers.data?.[0]?.id || ''}
                   onChange={(e) => setForm({ ...form, serverId: e.target.value })}
@@ -364,16 +374,16 @@ export default function NodesPage() {
                   ? 'Testing live Reality tunnel…'
                   : 'Test Reality compatibility'}
               </Button>
-              <small>The backend runs this live preflight again when the node is created.</small>
+              <small>{t('resources:nodes.backendPreflight')}</small>
             </div>
             <RealityCompatibilityPanel result={createCompatibility} />
             <div className="generated-note">
-              <b>Generated on save</b>
-              <span>UUID · X25519 keypair · Short ID · xtls-rprx-vision flow</span>
+              <b>{t('resources:nodes.generatedOnSave')}</b>
+              <span>{t('resources:nodes.generatedFields')}</span>
             </div>
             <div className="modal-actions">
               <Button type="button" variant="secondary" onClick={closeCreate}>
-                Cancel
+                {t('common:cancel')}
               </Button>
               <Button type="submit" disabled={create.isPending}>
                 {create.isPending ? 'Validating…' : 'Create & validate'}
@@ -384,8 +394,8 @@ export default function NodesPage() {
       ) : null}
       {share ? (
         <Modal
-          title="Share node"
-          description="Import this URI into a compatible VLESS client."
+          title={t('resources:nodes.share')}
+          description={t('resources:nodes.shareDescription')}
           onClose={() => setShare(null)}
         >
           <div className="share-content">
@@ -398,15 +408,15 @@ export default function NodesPage() {
               }}
             >
               <Copy size={16} />
-              Copy URI
+              {t('resources:nodes.copyUri')}
             </Button>
           </div>
         </Modal>
       ) : null}
       {editing ? (
         <Modal
-          title="Edit VLESS Reality node"
-          description="Changes are validated against the complete Reality inbound before saving."
+          title={t('resources:nodes.editReality')}
+          description={t('resources:nodes.editDescription')}
           onClose={() => setEditing(undefined)}
         >
           <form
@@ -485,12 +495,12 @@ export default function NodesPage() {
                   ? 'Testing live Reality tunnel…'
                   : 'Test Reality compatibility'}
               </Button>
-              <small>Saving SNI or target changes always triggers a fresh backend preflight.</small>
+              <small>{t('resources:nodes.savePreflight')}</small>
             </div>
             <RealityCompatibilityPanel result={editCompatibility} />
             <div className="modal-actions">
               <Button type="button" variant="secondary" onClick={() => setEditing(undefined)}>
-                Cancel
+                {t('common:cancel')}
               </Button>
               <Button type="submit" disabled={update.isPending}>
                 {update.isPending ? 'Validating…' : 'Save changes'}

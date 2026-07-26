@@ -1,6 +1,6 @@
 # ProxyHub
 
-ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.3.1 stabilization adds an immutable release identity, release operations foundation, and a read-only Diagnostics Center.
+ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.3.1 stabilization adds release operations, read-only diagnostics, guided setup, subscription readiness, safe client delivery, and an English/Simplified Chinese Web console.
 
 ![ProxyHub dashboard design](docs/design/proxyhub-dashboard-concept.png)
 
@@ -8,6 +8,7 @@ ProxyHub is a modern, open-source proxy infrastructure management platform for L
 >
 > - Phase 1 — Release and Operations Foundation: **Code and CI Complete; VPS Deployment Pending**.
 > - Phase 2 — Diagnostics Center and Runtime Observability: **Code and CI Complete; VPS Deployment Pending**.
+> - Phase 3 — Guided Workflow, Subscription Readiness, Client Delivery, and Localization: **Code Complete; CI and VPS Deployment Pending; Real Client Import Verification Pending**.
 > - Reality Target Compatibility Hotfix: **Code and CI Verified; VPS Verification Pending**.
 
 ### V0.1.1 implementation notes
@@ -36,7 +37,10 @@ ProxyHub is a modern, open-source proxy infrastructure management platform for L
 - Client-independent policies with ordered, first-match-wins rules and node-pool actions
 - Deterministic Mihomo, sing-box, and raw VLESS subscription compilers with explicit diagnostics
 - Hashed, rotatable subscription tokens with expiry, rate limiting, ETag, and one-time token display
-- Policy Studio and subscription management pages with masked-by-default previews
+- Policy Studio and subscription management pages with always-sanitized previews
+- English and Simplified Chinese Web locales with browser detection, browser-local persistence, and English fallback
+- Data-derived Dashboard Quick Start, resource dependency/delete impact analysis, and backend delete rechecks
+- Server-side Subscription Readiness preflight, bounded compiler dry runs, response tests, and compiler-derived client capability guides
 - Reusable Manual and Remote Rule Sets with normalized cache, deterministic SHA-256 revisions, bounded previews, import/export, and Policy usage protection
 - HTTPS-only remote provider fetching with DNS/redirect SSRF validation, decompressed size limits, timeouts, conditional ETag/Last-Modified refresh, and Last Known Good fallback
 - Light/dark themes, command palette, responsive navigation, tables, dialogs, and QR sharing
@@ -208,56 +212,63 @@ All responses use `{ "success": true, "data": ... }` or:
 }
 ```
 
-| Method                   | Path                                  | Purpose                                    |
-| ------------------------ | ------------------------------------- | ------------------------------------------ |
-| `GET`                    | `/api/health`                         | Controller health                          |
-| `GET`                    | `/api/auth/status`                    | First-run bootstrap state                  |
-| `POST`                   | `/api/auth/bootstrap`                 | Create the first administrator             |
-| `POST`                   | `/api/auth/login`                     | Password plus optional TOTP/recovery login |
-| `POST`                   | `/api/auth/logout`                    | Revoke the current session                 |
-| `GET`                    | `/api/auth/me`                        | Current administrator                      |
-| `GET`, `DELETE`          | `/api/auth/sessions`                  | List sessions / log out all                |
-| `POST`                   | `/api/auth/2fa/setup`                 | Generate TOTP enrollment                   |
-| `POST`                   | `/api/auth/2fa/enable`                | Verify TOTP and issue recovery codes       |
-| `GET`, `POST`            | `/api/nodes`                          | List/create Reality nodes                  |
-| `POST`                   | `/api/nodes/reality-compatibility`    | Run an isolated live Reality target test   |
-| `PATCH`, `DELETE`        | `/api/nodes/:id`                      | Update/delete a node                       |
-| `POST`                   | `/api/nodes/:id/clone`                | Clone with fresh credentials               |
-| `GET`                    | `/api/nodes/:id/share`                | VLESS URI and QR code                      |
-| `GET`, `POST`            | `/api/node-pools`                     | List/create node pools                     |
-| `PUT`, `DELETE`          | `/api/node-pools/:id`                 | Replace/delete a pool                      |
-| `GET`, `POST`            | `/api/policies`                       | List/create policies                       |
-| `GET`, `PATCH`, `DELETE` | `/api/policies/:id`                   | Read/update/delete a policy                |
-| `POST`                   | `/api/policies/:id/duplicate`         | Duplicate a policy and its rules           |
-| `POST`                   | `/api/policies/:id/rules`             | Add an ordered policy rule                 |
-| `PATCH`, `DELETE`        | `/api/policies/:id/rules/:ruleId`     | Update/delete a rule                       |
-| `PUT`                    | `/api/policies/:id/rules/reorder`     | Persist the complete rule order            |
-| `POST`                   | `/api/policies/:id/compile-preview`   | Compile with diagnostics                   |
-| `GET`, `POST`            | `/api/rule-sets`                      | List/create Rule Sets                      |
-| `GET`, `PATCH`, `DELETE` | `/api/rule-sets/:id`                  | Read/update/delete with usage protection   |
-| `POST`                   | `/api/rule-sets/:id/refresh`          | Refresh a remote source                    |
-| `GET`                    | `/api/rule-sets/:id/preview`          | Read a bounded normalized-cache preview    |
-| `POST`                   | `/api/rule-sets/test-source`          | SSRF-safe remote source test               |
-| `POST`                   | `/api/rule-sets/parse-preview`        | Parse import content without saving        |
-| `POST`                   | `/api/rule-sets/:id/import`           | Confirm manual bulk import                 |
-| `GET`                    | `/api/rule-sets/:id/export`           | Export ProxyHub Native normalized rules    |
-| `GET`, `POST`            | `/api/subscriptions`                  | List/create subscriptions                  |
-| `GET`, `PATCH`, `DELETE` | `/api/subscriptions/:id`              | Read/update/delete a subscription          |
-| `POST`                   | `/api/subscriptions/:id/rotate-token` | Rotate and display a token once            |
-| `POST`                   | `/api/subscriptions/:id/preview`      | Authenticated masked preview               |
-| `GET`                    | `/sub/:token`                         | Token-authenticated compiled subscription  |
-| `GET`                    | `/api/dashboard`                      | Aggregated operational overview            |
-| `GET`                    | `/api/servers`                        | Server inventory                           |
-| `GET`                    | `/api/xray/status`                    | Agent/Xray status                          |
-| `POST`                   | `/api/xray/restart`                   | Validated fixed restart action             |
-| `GET`                    | `/api/notifications`                  | Notification center                        |
-| `PATCH`                  | `/api/notifications/:id/read`         | Mark one notification read                 |
-| `POST`                   | `/api/notifications/read-all`         | Mark all notifications read                |
-| `GET`                    | `/api/audit-logs`                     | Recent audit records                       |
-| `GET`                    | `/api/diagnostics/overview`           | Cached read-only diagnostics overview      |
-| `GET`                    | `/api/diagnostics/{section}`          | Read-only diagnostics section              |
-| `POST`                   | `/api/diagnostics/run`                | Bounded manual deep diagnostics            |
-| `GET`                    | `/api/diagnostics/export`             | Sanitized diagnostics JSON bundle          |
+| Method                   | Path                                     | Purpose                                    |
+| ------------------------ | ---------------------------------------- | ------------------------------------------ |
+| `GET`                    | `/api/health`                            | Controller health                          |
+| `GET`                    | `/api/auth/status`                       | First-run bootstrap state                  |
+| `POST`                   | `/api/auth/bootstrap`                    | Create the first administrator             |
+| `POST`                   | `/api/auth/login`                        | Password plus optional TOTP/recovery login |
+| `POST`                   | `/api/auth/logout`                       | Revoke the current session                 |
+| `GET`                    | `/api/auth/me`                           | Current administrator                      |
+| `GET`, `DELETE`          | `/api/auth/sessions`                     | List sessions / log out all                |
+| `POST`                   | `/api/auth/2fa/setup`                    | Generate TOTP enrollment                   |
+| `POST`                   | `/api/auth/2fa/enable`                   | Verify TOTP and issue recovery codes       |
+| `GET`, `POST`            | `/api/nodes`                             | List/create Reality nodes                  |
+| `POST`                   | `/api/nodes/reality-compatibility`       | Run an isolated live Reality target test   |
+| `PATCH`, `DELETE`        | `/api/nodes/:id`                         | Update/delete a node                       |
+| `POST`                   | `/api/nodes/:id/clone`                   | Clone with fresh credentials               |
+| `GET`                    | `/api/nodes/:id/share`                   | VLESS URI and QR code                      |
+| `GET`, `POST`            | `/api/node-pools`                        | List/create node pools                     |
+| `PUT`, `DELETE`          | `/api/node-pools/:id`                    | Replace/delete a pool                      |
+| `GET`, `POST`            | `/api/policies`                          | List/create policies                       |
+| `GET`, `PATCH`, `DELETE` | `/api/policies/:id`                      | Read/update/delete a policy                |
+| `POST`                   | `/api/policies/:id/duplicate`            | Duplicate a policy and its rules           |
+| `POST`                   | `/api/policies/:id/rules`                | Add an ordered policy rule                 |
+| `PATCH`, `DELETE`        | `/api/policies/:id/rules/:ruleId`        | Update/delete a rule                       |
+| `PUT`                    | `/api/policies/:id/rules/reorder`        | Persist the complete rule order            |
+| `POST`                   | `/api/policies/:id/compile-preview`      | Compile with diagnostics                   |
+| `GET`, `POST`            | `/api/rule-sets`                         | List/create Rule Sets                      |
+| `GET`, `PATCH`, `DELETE` | `/api/rule-sets/:id`                     | Read/update/delete with usage protection   |
+| `POST`                   | `/api/rule-sets/:id/refresh`             | Refresh a remote source                    |
+| `GET`                    | `/api/rule-sets/:id/preview`             | Read a bounded normalized-cache preview    |
+| `POST`                   | `/api/rule-sets/test-source`             | SSRF-safe remote source test               |
+| `POST`                   | `/api/rule-sets/parse-preview`           | Parse import content without saving        |
+| `POST`                   | `/api/rule-sets/:id/import`              | Confirm manual bulk import                 |
+| `GET`                    | `/api/rule-sets/:id/export`              | Export ProxyHub Native normalized rules    |
+| `GET`, `POST`            | `/api/subscriptions`                     | List/create subscriptions                  |
+| `GET`, `PATCH`, `DELETE` | `/api/subscriptions/:id`                 | Read/update/delete a subscription          |
+| `POST`                   | `/api/subscriptions/:id/rotate-token`    | Rotate and display a token once            |
+| `POST`                   | `/api/subscriptions/:id/preview`         | Authenticated sanitized preview            |
+| `POST`                   | `/api/subscriptions/readiness`           | Preflight an unsaved subscription          |
+| `POST`                   | `/api/subscriptions/:id/readiness`       | Run a no-mutation readiness check          |
+| `POST`                   | `/api/subscriptions/:id/test-response`   | Simulate public response semantics safely  |
+| `GET`                    | `/api/subscriptions/capabilities`        | Compiler-derived client capability matrix  |
+| `GET`                    | `/api/setup/progress`                    | Data-derived guided setup progress         |
+| `GET`                    | `/api/resources/:type/:id/dependencies`  | Bounded resource dependency analysis       |
+| `GET`                    | `/api/resources/:type/:id/delete-impact` | Safe delete impact analysis                |
+| `GET`                    | `/sub/:token`                            | Token-authenticated compiled subscription  |
+| `GET`                    | `/api/dashboard`                         | Aggregated operational overview            |
+| `GET`                    | `/api/servers`                           | Server inventory                           |
+| `GET`                    | `/api/xray/status`                       | Agent/Xray status                          |
+| `POST`                   | `/api/xray/restart`                      | Validated fixed restart action             |
+| `GET`                    | `/api/notifications`                     | Notification center                        |
+| `PATCH`                  | `/api/notifications/:id/read`            | Mark one notification read                 |
+| `POST`                   | `/api/notifications/read-all`            | Mark all notifications read                |
+| `GET`                    | `/api/audit-logs`                        | Recent audit records                       |
+| `GET`                    | `/api/diagnostics/overview`              | Cached read-only diagnostics overview      |
+| `GET`                    | `/api/diagnostics/{section}`             | Read-only diagnostics section              |
+| `POST`                   | `/api/diagnostics/run`                   | Bounded manual deep diagnostics            |
+| `GET`                    | `/api/diagnostics/export`                | Sanitized diagnostics JSON bundle          |
 
 ## Database
 
@@ -324,10 +335,15 @@ docs/design/           Accepted visual design reference
 - [Sanitized diagnostics export](docs/diagnostics/export.md)
 - [Diagnostics troubleshooting](docs/operations/troubleshooting.md)
 - [Diagnostics on a low-resource VPS](docs/operations/low-resource-vps.md)
+- [Language selection](docs/user-guide/language.md)
+- [Quick Start](docs/user-guide/quick-start.md)
+- [Subscription readiness](docs/user-guide/subscription-readiness.md)
+- [Sanitized configuration preview](docs/user-guide/config-preview.md)
+- [Client import guide](docs/user-guide/client-import.md)
 
 ## Roadmap
 
-V0.3.1 Phase 1 provides the release and operations foundation; Phase 2 adds read-only diagnostics and runtime visibility. VPS deployment acceptance remains pending for both phases. Automated repair, Web restart/deploy/update/rollback/restore controls, scheduled/cloud backups, automatic cross-schema database restore, distributed controllers, marketplace/sharing, AI rule generation, traffic collection, quotas, billing, mobile apps, and multi-server orchestration remain future work. Phase 3 and V0.4 have not started.
+V0.3.1 Phase 1 provides the release and operations foundation, Phase 2 adds read-only diagnostics and runtime visibility, and Phase 3 adds guided setup, dependency-safe deletion, subscription readiness, sanitized client delivery, and Web localization. VPS deployment acceptance remains pending for all three phases. Reality Target Compatibility VPS verification, real Mihomo/sing-box GUI imports, real remote Rule Set public-network verification, and real GHCR update/rollback exercises remain pending. Automated repair, Web restart/deploy/update/rollback/restore controls, scheduled/cloud backups, automatic cross-schema database restore, distributed controllers, marketplace/sharing, AI rule generation, traffic collection, quotas, billing, mobile apps, and multi-server orchestration remain future work. Phase 4 and V0.4 have not started.
 
 ## Contributing
 

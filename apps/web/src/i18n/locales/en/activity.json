@@ -1,0 +1,20 @@
+{
+  "notifications": "Notifications",
+  "auditLogs": "Audit Logs",
+  "notificationsDescription": "Operational events and security signals in one searchable stream.",
+  "auditDescription": "Immutable visibility into every important administrative operation.",
+  "markAllRead": "Mark all read",
+  "markRead": "Mark read",
+  "searchNotifications": "Search notifications…",
+  "searchAudit": "Search actor, action or resource…",
+  "records": "{{count}} records",
+  "time": "Time",
+  "actor": "Actor",
+  "action": "Action",
+  "resource": "Resource",
+  "ipAddress": "IP address",
+  "result": "Result",
+  "noNotifications": "No notifications",
+  "noAudit": "No audit activity",
+  "empty": "Events will appear here as the platform is used."
+}

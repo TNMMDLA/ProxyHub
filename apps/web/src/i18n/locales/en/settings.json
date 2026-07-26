@@ -1,0 +1,14 @@
+{
+  "title": "Settings",
+  "description": "Release identity, language and support information for this instance.",
+  "releaseIdentity": "Release identity",
+  "buildDeployment": "{{environment}} build · {{mode}} deployment",
+  "version": "ProxyHub version",
+  "gitCommit": "Git commit",
+  "buildTime": "Build time",
+  "xrayCore": "Xray Core",
+  "migrationFingerprint": "Migration fingerprint",
+  "metadataNote": "This page contains public build metadata only. Secrets, environment values and database paths are never returned by the health endpoint.",
+  "languageTitle": "Display language",
+  "languageDescription": "The preference is stored only in this browser. English is used when a translation is unavailable."
+}

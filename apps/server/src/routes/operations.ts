@@ -5,6 +5,9 @@ import { prisma } from '../db.js';
 import { audit } from '../audit.js';
 import type { AgentClient } from '../agent-client.js';
 import { PROXYHUB_RELEASE } from '@proxyhub/shared';
+import { getSetupProgress } from '../setup-progress.js';
+import { assertDeleteAllowed } from '../resource-dependencies.js';
+import { AppError } from '../errors.js';
 
 export const operationRoutes: FastifyPluginAsync<{ agentClient: AgentClient }> = async (
   app,
@@ -65,6 +68,21 @@ export const operationRoutes: FastifyPluginAsync<{ agentClient: AgentClient }> =
     success: true,
     data: await prisma.server.findMany({ include: { _count: { select: { nodes: true } } } }),
   }));
+  app.delete('/servers/:id', { preHandler: requireRole('ADMIN', 'OPERATOR') }, async (request) => {
+    const id = (request.params as { id: string }).id;
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) throw new AppError('SERVER_NOT_FOUND', 'Server not found', 404);
+    await assertDeleteAllowed('SERVER', id, request);
+    await prisma.server.delete({ where: { id } });
+    await audit(request, 'SERVER_DELETED', 'Server', 'SUCCESS', id, { name: server.name });
+    return { success: true, data: null };
+  });
+
+  app.get(
+    '/setup/progress',
+    { preHandler: requireRole('ADMIN', 'OPERATOR', 'VIEWER') },
+    async () => ({ success: true, data: await getSetupProgress() }),
+  );
 
   app.get('/xray/status', { preHandler: requireRole('ADMIN', 'OPERATOR', 'VIEWER') }, async () => ({
     success: true,

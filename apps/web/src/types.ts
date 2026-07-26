@@ -1,3 +1,5 @@
+import type { SubscriptionReadinessResult } from '@proxyhub/shared';
+
 export interface Admin {
   id: string;
   username: string;
@@ -156,6 +158,48 @@ export interface CompilerPreviewRecord {
       capabilities: { routing: boolean; ruleTypes: PolicyMatchType[] };
     };
   };
+}
+
+export interface SubscriptionPreviewRecord {
+  format: SubscriptionFormat;
+  contentType: string;
+  output: string;
+  sanitized: true;
+  truncated: boolean;
+  originalBytes: number;
+  displayedBytes: number;
+  limits: {
+    maxBytes: number;
+    maxNodes: number;
+    maxRules: number;
+    timeoutMs: number;
+    concurrency: number;
+  };
+  metadata: CompilerPreviewRecord['metadata'];
+  warnings: CompilerDiagnosticRecord[];
+  readiness: SubscriptionReadinessResult;
+}
+
+export interface SubscriptionResponseTestRecord {
+  accessible: boolean;
+  statusCode: number;
+  errorCode?: string;
+  contentType?: string;
+  cacheControl?: string;
+  etag?: string;
+  responseBytes?: number;
+  format?: SubscriptionFormat;
+  token: '[REDACTED]';
+  compileSuccess?: boolean;
+  readiness: SubscriptionReadinessResult;
+}
+
+export type CapabilityState = 'SUPPORTED' | 'PARTIAL' | 'UNSUPPORTED' | 'NOT_APPLICABLE';
+export interface SubscriptionCapabilityRecord {
+  format: SubscriptionFormat;
+  validatedAgainst: string;
+  features: Record<string, CapabilityState>;
+  supportedRuleTypes: PolicyMatchType[];
 }
 
 export interface SubscriptionRecord {

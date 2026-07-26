@@ -6,8 +6,11 @@ import { PROXYHUB_RELEASE } from '@proxyhub/shared';
 import { api, ApiError } from '../api';
 import { Brand } from '../components/AppShell';
 import { Button, Input, QueryErrorState } from '../components/ui';
+import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 export function AuthPage() {
+  const { t } = useTranslation('auth');
   const queryClient = useQueryClient();
   const status = useQuery({
     queryKey: ['auth-status'],
@@ -46,33 +49,31 @@ export function AuthPage() {
             <span />
             <span />
           </div>
-          <h1>
-            Infrastructure,
-            <br />
-            under control.
-          </h1>
-          <p>
-            Manage Xray nodes, server health, secure access and resilient node pools from one calm
-            workspace.
-          </p>
+          <h1>{t('headline')}</h1>
+          <p>{t('story')}</p>
           <ul>
             <li>
               <Check size={16} />
-              Validated Xray configuration
+              {t('validatedConfig')}
             </li>
             <li>
               <Check size={16} />
-              Encrypted Reality credentials
+              {t('encryptedCredentials')}
             </li>
             <li>
               <Check size={16} />
-              Complete operational audit trail
+              {t('auditTrail')}
             </li>
           </ul>
         </div>
-        <small>ProxyHub {PROXYHUB_RELEASE.version} · Pre-production</small>
+        <small>
+          ProxyHub {PROXYHUB_RELEASE.version} · {t('preProduction')}
+        </small>
       </section>
       <section className="auth-form-wrap">
+        <div className="auth-language">
+          <LanguageSwitcher />
+        </div>
         <form
           className="auth-form"
           onSubmit={(event) => {
@@ -81,14 +82,10 @@ export function AuthPage() {
           }}
         >
           <div className="auth-icon">{isBootstrap ? <ShieldCheck /> : <KeyRound />}</div>
-          <h2>{isBootstrap ? 'Create your administrator' : 'Welcome back'}</h2>
-          <p>
-            {isBootstrap
-              ? 'Set up the first secure account for this ProxyHub instance.'
-              : 'Sign in to your infrastructure workspace.'}
-          </p>
+          <h2>{isBootstrap ? t('createAdministrator') : t('welcomeBack')}</h2>
+          <p>{isBootstrap ? t('bootstrapDescription') : t('loginDescription')}</p>
           <Input
-            label="Username"
+            label={t('username')}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
@@ -96,7 +93,7 @@ export function AuthPage() {
           />
           <div className="password-field">
             <Input
-              label="Password"
+              label={t('password')}
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -104,13 +101,17 @@ export function AuthPage() {
               minLength={isBootstrap ? 12 : 1}
               required
             />
-            <button type="button" onClick={() => setShowPassword((value) => !value)}>
+            <button
+              type="button"
+              aria-label={showPassword ? t('hidePassword') : t('showPassword')}
+              onClick={() => setShowPassword((value) => !value)}
+            >
               {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
             </button>
           </div>
           {needsTotp ? (
             <Input
-              label="6-digit authentication code"
+              label={t('authenticationCode')}
               inputMode="numeric"
               pattern="[0-9]{6}"
               value={totp}
@@ -120,12 +121,12 @@ export function AuthPage() {
             />
           ) : null}
           <Button type="submit" disabled={submit.isPending}>
-            {submit.isPending ? 'Please wait…' : isBootstrap ? 'Create workspace' : 'Sign in'}
+            {submit.isPending ? t('pleaseWait') : isBootstrap ? t('createWorkspace') : t('signIn')}
             <ArrowRight size={17} />
           </Button>
           <span className="auth-security">
             <ShieldCheck size={14} />
-            Protected by Argon2id and secure HttpOnly sessions
+            {t('securityNote')}
           </span>
         </form>
       </section>

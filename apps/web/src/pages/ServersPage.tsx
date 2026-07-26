@@ -6,14 +6,21 @@ import {
   MemoryStick,
   RefreshCw,
   Server as ServerIcon,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AgentStatusData } from '@proxyhub/shared';
-import { api, formatRelative } from '../api';
+import { api } from '../api';
 import { Button, PageHeader, QueryErrorState, Status } from '../components/ui';
 import type { ServerRecord } from '../types';
+import { useTranslation } from 'react-i18next';
+import { formatRelativeTime } from '../i18n/formatters';
+import type { SupportedLocale } from '../i18n';
+import { confirmDeleteWithImpact } from '../delete-impact';
 
 export default function ServersPage() {
+  const { t, i18n } = useTranslation(['resources', 'common']);
+  const locale: SupportedLocale = i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en';
   const client = useQueryClient();
   const servers = useQuery({
     queryKey: ['servers'],
@@ -27,8 +34,20 @@ export default function ServersPage() {
   const restart = useMutation({
     mutationFn: () => api('/xray/restart', { method: 'POST' }),
     onSuccess: () => {
-      toast.success('Xray restart requested');
+      toast.success(t('resources:servers.restartRequested'));
       void client.invalidateQueries({ queryKey: ['xray-status'] });
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/servers/${id}`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['servers'] }),
+        client.invalidateQueries({ queryKey: ['dashboard'] }),
+        client.invalidateQueries({ queryKey: ['setup-progress'] }),
+      ]);
+      toast.success(t('resources:servers.deleted'));
     },
     onError: (error) => toast.error(error.message),
   });
@@ -38,12 +57,12 @@ export default function ServersPage() {
   return (
     <>
       <PageHeader
-        title="Servers"
-        description="Controller and Agent health across your infrastructure."
+        title={t('resources:servers.title')}
+        description={t('resources:servers.description')}
         actions={
           <Button onClick={() => restart.mutate()} disabled={restart.isPending}>
             <RefreshCw size={16} className={restart.isPending ? 'spin' : ''} />
-            Restart Xray
+            {t('resources:servers.restartXray')}
           </Button>
         }
       />
@@ -51,45 +70,48 @@ export default function ServersPage() {
         <div>
           <ServerIcon />
           <span>
-            Registered servers<strong>{servers.data?.length ?? 0}</strong>
+            {t('resources:servers.registered')}
+            <strong>{servers.data?.length ?? 0}</strong>
           </span>
         </div>
         <div>
           <Activity />
           <span>
-            Xray status<strong>{xray.data?.xray.status ?? 'Unavailable'}</strong>
+            {t('resources:servers.xrayStatus')}
+            <strong>{xray.data?.xray.status ?? t('common:unavailable')}</strong>
           </span>
         </div>
         <div>
           <Cpu />
           <span>
-            System load<strong>{xray.data?.system.load.toFixed(2) ?? '—'}</strong>
+            {t('resources:servers.systemLoad')}
+            <strong>{xray.data?.system.load.toFixed(2) ?? '—'}</strong>
           </span>
         </div>
         <div>
           <MemoryStick />
           <span>
-            Memory used<strong>{xray.data?.system.memoryUsage ?? '—'}%</strong>
+            {t('resources:servers.memoryUsed')}
+            <strong>{xray.data?.system.memoryUsage ?? '—'}%</strong>
           </span>
         </div>
       </section>
       <section className="table-panel">
         <div className="section-heading">
-          <h2>Infrastructure</h2>
-          <p>
-            Phase 1 operates the local controller; remote Agent enrollment is architecture-ready.
-          </p>
+          <h2>{t('resources:servers.infrastructure')}</h2>
+          <p>{t('resources:servers.phaseNote')}</p>
         </div>
         <div className="responsive-table">
           <table>
             <thead>
               <tr>
-                <th>Server</th>
-                <th>Status</th>
-                <th>Region</th>
-                <th>Address</th>
-                <th>Nodes</th>
-                <th>Last heartbeat</th>
+                <th>{t('resources:servers.server')}</th>
+                <th>{t('common:status')}</th>
+                <th>{t('resources:servers.region')}</th>
+                <th>{t('resources:servers.address')}</th>
+                <th>{t('resources:servers.nodes')}</th>
+                <th>{t('resources:servers.lastHeartbeat')}</th>
+                <th>{t('common:actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -108,7 +130,28 @@ export default function ServersPage() {
                   <td>{server.region}</td>
                   <td className="mono">{server.ip}</td>
                   <td>{server._count?.nodes ?? 0}</td>
-                  <td>{server.lastHeartbeat ? formatRelative(server.lastHeartbeat) : 'Never'}</td>
+                  <td>
+                    {server.lastHeartbeat
+                      ? formatRelativeTime(server.lastHeartbeat, locale)
+                      : t('common:never')}
+                  </td>
+                  <td>
+                    <button
+                      className="icon-danger"
+                      type="button"
+                      aria-label={t('resources:servers.delete')}
+                      disabled={remove.isPending}
+                      onClick={() => {
+                        void confirmDeleteWithImpact('SERVER', server.id, server.name).then(
+                          (confirmed) => {
+                            if (confirmed) remove.mutate(server.id);
+                          },
+                        );
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -122,8 +165,8 @@ export default function ServersPage() {
             <b>Xray Core</b>
             <small>
               {xray.isError
-                ? 'Agent connection unavailable'
-                : (xray.data?.xray.version ?? 'Xray Core unavailable')}
+                ? t('resources:servers.agentUnavailable')
+                : (xray.data?.xray.version ?? t('resources:servers.xrayUnavailable'))}
             </small>
           </span>
         </div>
@@ -132,15 +175,15 @@ export default function ServersPage() {
       {xray.data ? (
         <section className="xray-health-grid">
           <div>
-            <span>Process</span>
+            <span>{t('resources:servers.process')}</span>
             <Status value={xray.data.xray.checks.process.healthy ? 'HEALTHY' : 'OFFLINE'} />
           </div>
           <div>
-            <span>Container heartbeat</span>
+            <span>{t('resources:servers.containerHeartbeat')}</span>
             <Status value={xray.data.xray.checks.container.healthy ? 'HEALTHY' : 'OFFLINE'} />
           </div>
           <div>
-            <span>Configured ports</span>
+            <span>{t('resources:servers.configuredPorts')}</span>
             <Status
               value={
                 !xray.data.xray.checks.ports.known
@@ -152,12 +195,15 @@ export default function ServersPage() {
             />
             <small>
               {xray.data.xray.checks.ports.known
-                ? `${xray.data.xray.checks.ports.listening.length}/${xray.data.xray.checks.ports.configured.length} listening`
-                : 'Config could not be read'}
+                ? t('resources:servers.listening', {
+                    listening: xray.data.xray.checks.ports.listening.length,
+                    configured: xray.data.xray.checks.ports.configured.length,
+                  })
+                : t('resources:servers.configUnreadable')}
             </small>
           </div>
           <div>
-            <span>Config validity</span>
+            <span>{t('resources:servers.configValidity')}</span>
             <Status value={xray.data.xray.checks.config.healthy ? 'HEALTHY' : 'DEGRADED'} />
           </div>
         </section>

@@ -13,6 +13,8 @@ import {
   Status,
 } from '../components/ui';
 import type { NodeRecord, PoolRecord } from '../types';
+import { useTranslation } from 'react-i18next';
+import { confirmDeleteWithImpact } from '../delete-impact';
 
 interface PoolForm {
   name: string;
@@ -44,6 +46,7 @@ function poolPayload(pool: PoolRecord, enabled = pool.enabled): PoolForm {
 }
 
 export default function PoolsPage() {
+  const { t } = useTranslation(['resources', 'common']);
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string>();
@@ -111,12 +114,12 @@ export default function PoolsPage() {
   return (
     <>
       <PageHeader
-        title="Node Pools"
-        description="Create service groups, manage membership in batches, and control pool availability."
+        title={t('resources:pools.title')}
+        description={t('resources:pools.description')}
         actions={
           <Button onClick={openCreate}>
             <Plus size={16} />
-            Create pool
+            {t('resources:pools.create')}
           </Button>
         }
       />
@@ -138,25 +141,25 @@ export default function PoolsPage() {
                   <header>
                     <div>
                       <h3>{pool.name}</h3>
-                      <p>{pool.description || 'No description'}</p>
+                      <p>{pool.description || t('common:notAvailable')}</p>
                     </div>
                     <Status value={pool.enabled ? 'HEALTHY' : 'OFFLINE'} />
                   </header>
                   <div className="pool-meta">
                     <span>
-                      Region <b>{pool.region}</b>
+                      {t('resources:servers.region')} <b>{pool.region}</b>
                     </span>
                     <span>
-                      Strategy <b>{pool.strategy.replaceAll('_', ' ')}</b>
+                      {t('resources:pools.strategy')} <b>{pool.strategy.replaceAll('_', ' ')}</b>
                     </span>
                     <span>
-                      Total nodes <b>{pool.members.length}</b>
+                      {t('resources:pools.members')} <b>{pool.members.length}</b>
                     </span>
                     <span>
-                      Healthy <b>{healthyNodes}</b>
+                      {t('common:healthy')} <b>{healthyNodes}</b>
                     </span>
                     <span>
-                      Offline <b>{offlineNodes}</b>
+                      {t('common:statusLabels.OFFLINE')} <b>{offlineNodes}</b>
                     </span>
                   </div>
                   <div className="pool-members">
@@ -170,27 +173,33 @@ export default function PoolsPage() {
                     ) : (
                       <span className="muted">
                         <Waypoints size={14} />
-                        No nodes assigned
+                        {t('resources:pools.noNodesAssigned')}
                       </span>
                     )}
                   </div>
                 </div>
                 <div className="pool-actions">
-                  <button title="Edit pool" onClick={() => openEdit(pool)}>
+                  <button title={t('resources:pools.edit')} onClick={() => openEdit(pool)}>
                     <Pencil size={16} />
                   </button>
                   <button
-                    title={pool.enabled ? 'Disable pool' : 'Enable pool'}
+                    title={
+                      pool.enabled ? t('resources:pools.disable') : t('resources:pools.enable')
+                    }
                     disabled={toggle.isPending}
                     onClick={() => toggle.mutate(pool)}
                   >
                     {pool.enabled ? <PowerOff size={16} /> : <Power size={16} />}
                   </button>
                   <button
-                    title="Delete pool"
-                    onClick={() => {
-                      if (confirm(`Delete ${pool.name}?`)) remove.mutate(pool.id);
-                    }}
+                    title={t('common:delete')}
+                    onClick={() =>
+                      void confirmDeleteWithImpact('NODE_POOL', pool.id, pool.name)
+                        .then((confirmed) => {
+                          if (confirmed) remove.mutate(pool.id);
+                        })
+                        .catch((error: Error) => toast.error(error.message))
+                    }
                   >
                     <Trash2 size={16} />
                   </button>
@@ -202,20 +211,20 @@ export default function PoolsPage() {
       ) : (
         <EmptyState
           icon={<Boxes />}
-          title="No node pools"
-          body="Pools provide stable groups for future subscriptions, fallback and latency-based selection."
+          title={t('resources:pools.noPools')}
+          body={t('resources:pools.empty')}
           action={
             <Button onClick={openCreate}>
               <Plus size={16} />
-              Create first pool
+              {t('resources:pools.create')}
             </Button>
           }
         />
       )}
       {open ? (
         <Modal
-          title={editingId ? 'Edit node pool' : 'Create node pool'}
-          description="Select or remove multiple nodes and save the relationship set atomically."
+          title={editingId ? t('resources:pools.edit') : t('resources:pools.create')}
+          description={t('resources:pools.editDescription')}
           onClose={closeEditor}
         >
           <form
@@ -227,33 +236,33 @@ export default function PoolsPage() {
           >
             <div className="form-grid">
               <Input
-                label="Pool name"
+                label={t('common:name')}
                 value={form.name}
                 onChange={(event) => setForm({ ...form, name: event.target.value })}
-                placeholder="Japan Pool"
+                placeholder={t('resources:pools.namePlaceholder')}
                 required
               />
               <Input
-                label="Region"
+                label={t('resources:servers.region')}
                 value={form.region}
                 onChange={(event) => setForm({ ...form, region: event.target.value })}
               />
               <Input
-                label="Description"
+                label={t('common:description')}
                 value={form.description}
                 onChange={(event) => setForm({ ...form, description: event.target.value })}
               />
               <label className="field">
-                <span>Strategy</span>
+                <span>{t('resources:pools.strategy')}</span>
                 <select
                   value={form.strategy}
                   onChange={(event) => setForm({ ...form, strategy: event.target.value })}
                 >
-                  <option value="MANUAL">Manual</option>
-                  <option value="AUTO">Auto</option>
-                  <option value="FALLBACK">Fallback</option>
-                  <option value="LOAD_BALANCE">Load balance</option>
-                  <option value="LATENCY_BASED">Latency based</option>
+                  <option value="MANUAL">{t('resources:pools.manual')}</option>
+                  <option value="AUTO">{t('resources:pools.auto')}</option>
+                  <option value="FALLBACK">{t('resources:pools.fallback')}</option>
+                  <option value="LOAD_BALANCE">{t('resources:pools.loadBalance')}</option>
+                  <option value="LATENCY_BASED">{t('resources:pools.latencyBased')}</option>
                 </select>
               </label>
             </div>
@@ -264,12 +273,12 @@ export default function PoolsPage() {
                 onChange={(event) => setForm({ ...form, enabled: event.target.checked })}
               />
               <span>
-                <b>Pool enabled</b>
-                <small>Disabled pools remain configured but are unavailable for selection.</small>
+                <b>{t('resources:pools.poolEnabled')}</b>
+                <small>{t('resources:pools.enabledHelp')}</small>
               </span>
             </label>
             <fieldset className="node-picker">
-              <legend>Assigned nodes ({form.nodeIds.length})</legend>
+              <legend>{t('resources:pools.assignedNodes', { count: form.nodeIds.length })}</legend>
               {nodes.data?.length ? (
                 nodes.data.map((node) => (
                   <label key={node.id}>
@@ -295,15 +304,19 @@ export default function PoolsPage() {
                   </label>
                 ))
               ) : (
-                <p>Create a node before assigning pool members.</p>
+                <p>{t('resources:pools.createNodeFirst')}</p>
               )}
             </fieldset>
             <div className="modal-actions">
               <Button type="button" variant="secondary" onClick={closeEditor}>
-                Cancel
+                {t('common:cancel')}
               </Button>
               <Button type="submit" disabled={save.isPending}>
-                {save.isPending ? 'Saving…' : editingId ? 'Save pool' : 'Create pool'}
+                {save.isPending
+                  ? t('common:loading')
+                  : editingId
+                    ? t('common:save')
+                    : t('resources:pools.create')}
               </Button>
             </div>
           </form>

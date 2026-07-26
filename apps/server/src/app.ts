@@ -17,8 +17,11 @@ import { AppError } from './errors.js';
 import { defaultAgentClient, type AgentClient } from './agent-client.js';
 import { getBuildMetadata } from './release/build-metadata.js';
 import { diagnosticsRoutes } from './routes/diagnostics.js';
+import { resourceRoutes } from './routes/resources.js';
 import { DiagnosticsService } from './diagnostics/service.js';
 import { prisma } from './db.js';
+import { invalidateReadiness } from './subscription-readiness.js';
+import { invalidateSetupProgress } from './setup-progress.js';
 
 export function redactRequestUrl(url: string | undefined): string | undefined {
   return url?.replace(/(\/sub\/)[^/?#]+/g, '$1[REDACTED]');
@@ -50,6 +53,17 @@ export async function buildApp(options: { agentClient?: AgentClient; logFile?: s
   await app.register(cookie);
   await app.register(cors, { origin: config.WEB_ORIGIN, credentials: true });
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+  app.addHook('onResponse', async (request, reply) => {
+    if (
+      reply.statusCode < 400 &&
+      ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) &&
+      /^\/api\/(?:nodes|node-pools|policies|rule-sets|subscriptions)(?:\/|$)/u.test(request.url) &&
+      !/(?:readiness|preview|test-response|compile-preview)(?:[/?]|$)/u.test(request.url)
+    ) {
+      invalidateReadiness();
+      invalidateSetupProgress();
+    }
+  });
 
   app.setNotFoundHandler((_request, reply) =>
     reply
@@ -102,6 +116,7 @@ export async function buildApp(options: { agentClient?: AgentClient; logFile?: s
   await app.register(subscriptionRoutes, { prefix: '/api/subscriptions' });
   await app.register(publicSubscriptionRoutes, { prefix: '/sub' });
   await app.register(operationRoutes, { prefix: '/api', agentClient });
+  await app.register(resourceRoutes, { prefix: '/api/resources' });
   await app.register(diagnosticsRoutes, {
     prefix: '/api/diagnostics',
     service: new DiagnosticsService(prisma, agentClient, config),

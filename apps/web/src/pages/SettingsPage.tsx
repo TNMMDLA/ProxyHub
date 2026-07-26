@@ -3,12 +3,14 @@ import { Box, Clock3, Database, GitCommitHorizontal, ServerCog } from 'lucide-re
 import type { ProxyHubHealthData } from '@proxyhub/shared';
 import { api } from '../api';
 import { PageHeader, QueryErrorState, Status } from '../components/ui';
-
-function displayBuildTime(value: string): string {
-  return value === 'unknown' ? 'Not embedded' : new Date(value).toLocaleString();
-}
+import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { formatDateTime } from '../i18n/formatters';
+import type { SupportedLocale } from '../i18n';
 
 export default function SettingsPage() {
+  const { t, i18n } = useTranslation(['settings', 'common']);
+  const locale: SupportedLocale = i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en';
   const health = useQuery({
     queryKey: ['health'],
     queryFn: () => api<ProxyHubHealthData>('/health'),
@@ -27,17 +29,24 @@ export default function SettingsPage() {
   }
   const metadata = health.data;
   const details = [
-    { label: 'ProxyHub version', value: metadata.version, icon: Box },
+    { label: t('settings:version'), value: metadata.version, icon: Box },
     {
-      label: 'Git commit',
+      label: t('settings:gitCommit'),
       value: metadata.gitShortSha,
       title: metadata.gitSha,
       icon: GitCommitHorizontal,
     },
-    { label: 'Build time', value: displayBuildTime(metadata.buildTime), icon: Clock3 },
-    { label: 'Xray Core', value: metadata.xrayVersion, icon: ServerCog },
     {
-      label: 'Migration fingerprint',
+      label: t('settings:buildTime'),
+      value:
+        metadata.buildTime === 'unknown'
+          ? t('common:notEmbedded')
+          : formatDateTime(metadata.buildTime, locale),
+      icon: Clock3,
+    },
+    { label: t('settings:xrayCore'), value: metadata.xrayVersion, icon: ServerCog },
+    {
+      label: t('settings:migrationFingerprint'),
       value: metadata.database.migrationFingerprint.slice(0, 16),
       title: metadata.database.migrationFingerprint,
       icon: Database,
@@ -45,17 +54,24 @@ export default function SettingsPage() {
   ];
   return (
     <>
-      <PageHeader
-        title="Settings"
-        description="Read-only release identity for support, deployment and rollback verification."
-      />
+      <PageHeader title={t('settings:title')} description={t('settings:description')} />
+      <section className="settings-language-card">
+        <div>
+          <h2>{t('settings:languageTitle')}</h2>
+          <p>{t('settings:languageDescription')}</p>
+        </div>
+        <LanguageSwitcher />
+      </section>
       <section className="release-identity">
         <header>
           <div>
-            <span>Release identity</span>
+            <span>{t('settings:releaseIdentity')}</span>
             <h2>ProxyHub {metadata.version}</h2>
             <p>
-              {metadata.buildEnvironment} build · {metadata.deployMode} deployment
+              {t('settings:buildDeployment', {
+                environment: metadata.buildEnvironment,
+                mode: metadata.deployMode,
+              })}
             </p>
           </div>
           <Status value={metadata.status === 'ok' ? 'HEALTHY' : 'UNKNOWN'} />
@@ -71,10 +87,7 @@ export default function SettingsPage() {
             </article>
           ))}
         </div>
-        <p className="release-identity-note">
-          This page contains public build metadata only. Secrets, environment values and database
-          paths are never returned by the health endpoint.
-        </p>
+        <p className="release-identity-note">{t('settings:metadataNote')}</p>
       </section>
     </>
   );
