@@ -81,7 +81,7 @@ printf 'fixture' >"$backup_fixture/database.sqlite"
 tar -czf backups/proxyhub-backup-20260101T000000Z-000000000000.tar.gz \
   -C "$backup_fixture" database.sqlite manifest.json
 
-docker compose exec -T proxyhub-server node --input-type=module <<'EOF'
+docker compose exec -T -w /app/apps/server proxyhub-server node --input-type=module <<'EOF'
 const base = 'http://127.0.0.1:3000';
 const credentials = {
   username: 'runtime-admin',
