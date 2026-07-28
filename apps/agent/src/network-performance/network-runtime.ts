@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { chmod, lstat, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { connect, createServer, isIP } from 'node:net';
-import type { Socket } from 'node:net';
+import type { LookupFunction, Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { connect as connectTls } from 'node:tls';
@@ -298,6 +298,21 @@ export interface HttpsMeasurement {
   firstByteMs: number;
 }
 
+/**
+ * Pins a request to the address that passed validation while honoring both
+ * Node lookup callback shapes. Node 24 requests an address array when
+ * autoSelectFamily sets `all: true`.
+ */
+export function createPinnedLookup(selected: ResolvedAddress): LookupFunction {
+  return (_hostname, options, callback) => {
+    if (options.all) {
+      callback(null, [{ address: selected.address, family: selected.family }]);
+      return;
+    }
+    callback(null, selected.address, selected.family);
+  };
+}
+
 export async function validateNetworkPerformanceUrl(
   value: string,
   resolver: ResolveHostname,
@@ -406,8 +421,7 @@ function requestOnce(
           connection: 'close',
         },
         rejectUnauthorized: !insecureTlsForTesting,
-        lookup: (_hostname, _options, callback) =>
-          callback(null, selected.address, selected.family),
+        lookup: createPinnedLookup(selected),
         ...(input.proxyPort === undefined
           ? {}
           : {

@@ -2,12 +2,32 @@ import { readFile, stat } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import {
   cleanupPerformanceDirectory,
+  createPinnedLookup,
   createSecureTempDirectory,
   validateNetworkPerformanceUrl,
   writeSecureXrayConfig,
 } from './network-runtime.js';
 
 describe('network performance network safety', () => {
+  it('pins the validated address for Node 24 single and all-address lookups', async () => {
+    const lookup = createPinnedLookup({ address: '203.0.113.10', family: 4 });
+    const single = await new Promise<{ address: string; family: number }>((resolve, reject) => {
+      lookup('ignored.example', { all: false }, (error, address, family) => {
+        if (error) reject(error);
+        else resolve({ address: address as string, family: family ?? 0 });
+      });
+    });
+    const all = await new Promise<unknown>((resolve, reject) => {
+      lookup('ignored.example', { all: true }, (error, addresses) => {
+        if (error) reject(error);
+        else resolve(addresses);
+      });
+    });
+
+    expect(single).toEqual({ address: '203.0.113.10', family: 4 });
+    expect(all).toEqual([{ address: '203.0.113.10', family: 4 }]);
+  });
+
   it.each([
     'http://public.example/download',
     'file:///etc/passwd',
