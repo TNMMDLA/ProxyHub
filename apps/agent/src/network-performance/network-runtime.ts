@@ -391,6 +391,9 @@ async function createTlsSocketThroughSocks(
 ): Promise<TLSSocket> {
   const socket = await connectSocksSocket(proxyPort, selected, port, signal);
   onDiagnostic?.('SOCKS_CONNECTED');
+  // The SOCKS parser pauses reads while it consumes framing. Resume before
+  // handing the already-connected transport to Node's TLS state machine.
+  socket.resume();
   return new Promise((resolve, reject) => {
     const tlsSocket = connectTls({
       socket,
@@ -409,8 +412,6 @@ async function createTlsSocketThroughSocks(
       cleanup();
       reject(error instanceof Error ? error : new Error('Tunneled TLS connection failed'));
     });
-    // SOCKS framing pauses the raw transport until TLS has taken ownership.
-    socket.resume();
     tlsSocket.resume();
   });
 }
