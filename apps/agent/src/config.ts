@@ -3,6 +3,13 @@ import { z } from 'zod';
 const DEVELOPMENT_AGENT_TOKEN = 'dev-agent-token-change-me';
 const EXAMPLE_AGENT_TOKEN = 'replace-with-a-long-random-agent-token';
 
+const booleanFromEnvironment = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  if (value.toLowerCase() === 'true' || value === '1') return true;
+  if (value.toLowerCase() === 'false' || value === '0') return false;
+  return value;
+}, z.boolean());
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -23,6 +30,21 @@ const envSchema = z
       .min(5_000)
       .max(60_000)
       .default(20_000),
+    PROXYHUB_NETWORK_PERF_TARGETS_JSON: z.string().optional(),
+    PROXYHUB_NETWORK_PERF_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(30_000)
+      .max(300_000)
+      .default(120_000),
+    PROXYHUB_NETWORK_PERF_TARGET_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(5_000)
+      .max(60_000)
+      .default(20_000),
+    PROXYHUB_NETWORK_PERF_NODE_HOST: z.string().trim().min(1).max(253).default('127.0.0.1'),
+    PROXYHUB_NETWORK_PERF_TEST_MODE: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     if (

@@ -4,6 +4,7 @@ import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import Fastify from 'fastify';
 import { z } from 'zod';
 import { PROXYHUB_RELEASE } from '@proxyhub/shared';
+import { parseTargetRegistry } from '@proxyhub/network-performance-core';
 import {
   restoreValidatedConfig,
   testXrayConfig,
@@ -21,6 +22,8 @@ import {
   RealityTargetCompatibilityService,
 } from './reality-target-compatibility.js';
 import { collectAgentDiagnostics } from './diagnostics.js';
+import { NetworkPerformanceError, NetworkPerformanceRunner } from './network-performance/runner.js';
+import { cleanupStalePerformanceDirectories } from './network-performance/network-runtime.js';
 
 const env = parseAgentConfig(process.env);
 
@@ -34,6 +37,14 @@ const app = Fastify({
 const realityCompatibility = new RealityTargetCompatibilityService({
   binary: env.XRAY_BINARY,
   timeoutMs: env.REALITY_COMPATIBILITY_TIMEOUT_MS,
+});
+const networkPerformance = new NetworkPerformanceRunner({
+  binary: env.XRAY_BINARY,
+  targets: parseTargetRegistry(env.PROXYHUB_NETWORK_PERF_TARGETS_JSON),
+  globalTimeoutMs: env.PROXYHUB_NETWORK_PERF_TIMEOUT_MS,
+  targetTimeoutMs: env.PROXYHUB_NETWORK_PERF_TARGET_TIMEOUT_MS,
+  allowPrivateTargets: env.PROXYHUB_NETWORK_PERF_TEST_MODE,
+  insecureTlsForTesting: env.PROXYHUB_NETWORK_PERF_TEST_MODE,
 });
 
 let xrayOperation = Promise.resolve();
@@ -130,6 +141,87 @@ app.post('/xray/reality-compatibility', async (request) => {
   }
 });
 
+const performanceNodeSchema = z
+  .object({
+    address: z.string().trim().min(1).max(253),
+    port: z.number().int().min(1).max(65_535),
+    uuid: z.string().uuid(),
+    flow: z.literal('xtls-rprx-vision'),
+    sni: z.string().trim().min(1).max(253),
+    publicKey: z.string().trim().min(1).max(256),
+    shortId: z.string().trim().min(1).max(32),
+    fingerprint: z.string().trim().min(1).max(32),
+    enabled: z.boolean(),
+    protocol: z.string().trim().min(1).max(32),
+    transport: z.string().trim().min(1).max(32),
+    security: z.literal('REALITY'),
+    name: z.string().trim().min(1).max(120),
+    serverName: z.string().trim().min(1).max(120),
+    serverRegion: z.string().trim().max(120),
+    realityTarget: z.string().trim().min(1).max(300),
+    proxyhubVersion: z.string().trim().min(1).max(64),
+    gitSha: z.string().trim().min(1).max(64),
+    deployMode: z.string().trim().min(1).max(32),
+  })
+  .strict();
+
+app.get('/network-performance/capability', async () => ({
+  success: true,
+  data: networkPerformance.capability(),
+}));
+
+app.get('/network-performance/runtime-identity', async () => {
+  const [pid, configContents] = await Promise.all([
+    readFile(env.XRAY_PID_PATH, 'utf8'),
+    readFile(env.XRAY_CONFIG_PATH),
+  ]);
+  return {
+    success: true,
+    data: {
+      pid: Number.parseInt(pid.trim(), 10),
+      configSha256: createHash('sha256').update(configContents).digest('hex'),
+    },
+  };
+});
+
+app.post('/network-performance/runs', async (request, reply) => {
+  const input = performanceNodeSchema.parse(request.body);
+  const run = networkPerformance.start({
+    ...input,
+    address: env.PROXYHUB_NETWORK_PERF_NODE_HOST,
+  });
+  return reply.code(202).send({ success: true, data: run });
+});
+
+app.get('/network-performance/runs/:id', async (request) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+  const run = networkPerformance.get(id);
+  if (!run) {
+    return {
+      success: false,
+      error: {
+        code: 'NETWORK_PERFORMANCE_RUN_NOT_FOUND',
+        message: 'Network performance run was not found',
+      },
+    };
+  }
+  return { success: true, data: run };
+});
+
+app.post('/network-performance/runs/:id/cancel', async (request, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+  if (!networkPerformance.cancel(id)) {
+    return reply.code(409).send({
+      success: false,
+      error: {
+        code: 'NETWORK_PERFORMANCE_NOT_RUNNING',
+        message: 'Network performance run is not active',
+      },
+    });
+  }
+  return { success: true, data: { cancelled: true } };
+});
+
 app.post('/xray/apply', async (request) => {
   const body = z.object({ config: z.record(z.string(), z.unknown()) }).parse(request.body);
   return withXrayLock(async () => {
@@ -184,7 +276,11 @@ app.setErrorHandler((error, request, reply) => {
   const message = error instanceof Error ? error.message : 'Agent operation failed';
   const operationError = error instanceof XrayLifecycleError;
   const compatibilityError = error instanceof RealityCompatibilityError;
-  const code = operationError || compatibilityError ? error.code : 'AGENT_OPERATION_FAILED';
+  const performanceError = error instanceof NetworkPerformanceError;
+  const code =
+    operationError || compatibilityError || performanceError
+      ? error.code
+      : 'AGENT_OPERATION_FAILED';
   const statusCode = operationError
     ? 500
     : compatibilityError
@@ -199,11 +295,20 @@ app.setErrorHandler((error, request, reply) => {
                 error.code === 'REALITY_TARGET_BLOCKED_ADDRESS'
               ? 422
               : 500
-      : 400;
+      : performanceError
+        ? error.code === 'NETWORK_PERFORMANCE_TEST_BUSY'
+          ? 409
+          : error.code === 'NETWORK_PERFORMANCE_NODE_DISABLED' ||
+              error.code === 'NETWORK_PERFORMANCE_UNSUPPORTED_NODE' ||
+              error.code === 'NETWORK_PERFORMANCE_TARGET_INVALID'
+            ? 422
+            : 500
+        : 400;
   return reply.code(statusCode).send({
     success: false,
     error: { code, message },
   });
 });
 
+await cleanupStalePerformanceDirectories();
 await app.listen({ host: env.AGENT_HOST, port: env.AGENT_PORT });
