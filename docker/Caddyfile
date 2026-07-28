@@ -9,10 +9,6 @@
     reverse_proxy proxyhub-server:3000
   }
 
-  handle_path /network-perf-fixture/* {
-    reverse_proxy network-perf-fixture:8080
-  }
-
   handle {
     reverse_proxy proxyhub-web:80
   }
@@ -23,4 +19,17 @@
     Referrer-Policy "strict-origin-when-cross-origin"
     -Server
   }
+}
+
+# Docker runtime-test only: keep the synthetic performance fixture off the
+# public panel host while still exercising HTTPS over the isolated Docker
+# network. The upstream is absent outside the runtime-test profile.
+https://caddy {
+  tls internal
+
+  handle_path /network-perf-fixture/* {
+    reverse_proxy network-perf-fixture:8080
+  }
+
+  respond 404
 }

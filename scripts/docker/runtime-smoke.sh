@@ -108,6 +108,7 @@ if (!authentication.ok) {
 const cookie = authentication.headers.get('set-cookie')?.split(';')[0];
 if (!cookie) throw new Error('Diagnostics fixture authentication did not issue a session cookie');
 const diagnosticClientIp = `192.0.2.${((Date.now() + process.pid) % 254) + 1}`;
+const performanceClientIp = `198.51.100.${((Date.now() + process.pid) % 254) + 1}`;
 const authenticated = (path, init = {}) =>
   fetch(`${base}${path}`, {
     ...init,
@@ -117,8 +118,22 @@ const authenticated = (path, init = {}) =>
       ...(init.headers ?? {}),
     },
   });
+const performanceAuthenticated = (path, init = {}) =>
+  authenticated(path, {
+    ...init,
+    headers: {
+      'x-forwarded-for': performanceClientIp,
+      ...(init.headers ?? {}),
+    },
+  });
 const jsonRequest = (path, method, body) =>
   authenticated(path, {
+    method,
+    headers: body === undefined ? {} : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+const performanceJsonRequest = (path, method, body) =>
+  performanceAuthenticated(path, {
     method,
     headers: body === undefined ? {} : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -387,7 +402,9 @@ const agentInternal = async (path, init = {}) => {
   return body.data;
 };
 const runtimeIdentityBefore = await agentInternal('/network-performance/runtime-identity');
-const performanceCapability = await authenticated('/api/nodes/performance-tests/capability');
+const performanceCapability = await performanceAuthenticated(
+  '/api/nodes/performance-tests/capability',
+);
 const performanceCapabilityBody = await performanceCapability.json();
 if (
   !performanceCapability.ok ||
@@ -401,7 +418,7 @@ const waitForPerformanceRun = async (runId, expectedStatuses, timeoutMs = 30_000
   const deadline = Date.now() + timeoutMs;
   let body;
   while (Date.now() < deadline) {
-    const response = await authenticated(
+    const response = await performanceAuthenticated(
       `/api/nodes/${fixtureNode.id}/performance-tests/${runId}`,
     );
     body = await response.json();
@@ -409,12 +426,17 @@ const waitForPerformanceRun = async (runId, expectedStatuses, timeoutMs = 30_000
       throw new Error(`Performance run query failed: ${JSON.stringify(body)}`);
     }
     if (expectedStatuses.includes(body.data?.status)) return body.data;
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    if (['COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(body.data?.status)) {
+      throw new Error(
+        `Performance run reached unexpected terminal status: ${JSON.stringify(body.data)}`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
   throw new Error(`Performance run did not reach ${expectedStatuses.join('/')}: ${JSON.stringify(body)}`);
 };
 const startPerformanceRun = async () => {
-  const response = await jsonRequest(
+  const response = await performanceJsonRequest(
     `/api/nodes/${fixtureNode.id}/performance-tests`,
     'POST',
   );
@@ -426,16 +448,18 @@ const startPerformanceRun = async () => {
 };
 const waitForPerformanceIdle = async () => {
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    const response = await authenticated('/api/nodes/performance-tests/capability');
+    const response = await performanceAuthenticated(
+      '/api/nodes/performance-tests/capability',
+    );
     const body = await response.json();
     if (response.ok && body?.success && body.data?.busy === false) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error('Performance runner did not become idle');
 };
 
 const performanceRun = await startPerformanceRun();
-const concurrentPerformance = await jsonRequest(
+const concurrentPerformance = await performanceJsonRequest(
   `/api/nodes/${fixtureNode.id}/performance-tests`,
   'POST',
 );
@@ -471,7 +495,7 @@ for (const secret of [
     throw new Error('Performance API exposed a fixture secret');
   }
 }
-const performanceHistory = await authenticated(
+const performanceHistory = await performanceAuthenticated(
   `/api/nodes/${fixtureNode.id}/performance-tests`,
 );
 const performanceHistoryBody = await performanceHistory.json();
@@ -486,7 +510,7 @@ if (
 await waitForPerformanceIdle();
 await fetch('http://network-perf-fixture:8080/mode/slow', { method: 'POST' });
 const cancellablePerformance = await startPerformanceRun();
-const cancelledResponse = await jsonRequest(
+const cancelledResponse = await performanceJsonRequest(
   `/api/nodes/${fixtureNode.id}/performance-tests/${cancellablePerformance.id}/cancel`,
   'POST',
 );
