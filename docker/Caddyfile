@@ -26,6 +26,7 @@
 # Docker gateway hairpin NAT. The upstream is absent outside runtime-test.
 https://caddy, https://127.0.0.1 {
   tls internal
+  log
 
   handle_path /network-perf-fixture/* {
     reverse_proxy network-perf-fixture:8080

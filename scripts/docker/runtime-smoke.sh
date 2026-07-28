@@ -216,7 +216,7 @@ const fixtureNode = existingFixtureNode
   ? await prisma.node.update({ where: { id: existingFixtureNode.id }, data: nodeData })
   : await prisma.node.create({ data: nodeData });
 const formalConfig = {
-  log: { loglevel: 'warning' },
+  log: { loglevel: 'debug' },
   inbounds: [
     {
       tag: 'runtime-network-performance-node',
