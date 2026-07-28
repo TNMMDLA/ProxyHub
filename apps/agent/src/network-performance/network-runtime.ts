@@ -39,9 +39,8 @@ class NativeTemporaryXray implements ManagedTemporaryXray {
         resolve();
       });
     });
-    child.stdout.resume();
     if (onDiagnostic) {
-      child.stderr.on('data', (chunk: Buffer) => {
+      const consume = (chunk: Buffer) => {
         const sanitized = chunk
           .toString('utf8')
           .replace(
@@ -52,8 +51,11 @@ class NativeTemporaryXray implements ManagedTemporaryXray {
           .trim()
           .slice(0, 2_000);
         if (sanitized) onDiagnostic(sanitized);
-      });
+      };
+      child.stdout.on('data', consume);
+      child.stderr.on('data', consume);
     } else {
+      child.stdout.resume();
       child.stderr.resume();
     }
   }

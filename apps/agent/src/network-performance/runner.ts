@@ -261,11 +261,7 @@ export class NetworkPerformanceRunner {
       directory = await this.runtime.createDirectory();
       const config = buildNetworkPerformanceClientConfig({ socksPort, node });
       if (this.options.onDiagnostic) {
-        Object.assign(config.log as Record<string, unknown>, {
-          loglevel: 'debug',
-          access: '/dev/stderr',
-          error: '/dev/stderr',
-        });
+        (config.log as Record<string, unknown>).loglevel = 'debug';
       }
       const configPath = await this.runtime.writeConfig(directory, config);
       temporaryXray = await this.runtime.startXray(
