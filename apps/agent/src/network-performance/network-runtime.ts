@@ -6,9 +6,8 @@ import type { LookupFunction, Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { connect as connectTls } from 'node:tls';
+import type { TLSSocket } from 'node:tls';
 import { request as httpsRequest } from 'node:https';
-import type { ClientRequestArgs } from 'node:http';
-import type { Duplex } from 'node:stream';
 import type { ResolvedAddress, ResolveHostname } from '@proxyhub/xray-manager';
 import { isBlockedAddress, systemResolver, testXrayConfig } from '@proxyhub/xray-manager';
 
@@ -379,7 +378,39 @@ export async function measureHttps(
   throw new Error('NETWORK_PERFORMANCE_REDIRECT_LIMIT');
 }
 
-function requestOnce(
+async function createTlsSocketThroughSocks(
+  proxyPort: number,
+  selected: ResolvedAddress,
+  port: number,
+  servername: string,
+  rejectUnauthorized: boolean,
+  signal: AbortSignal,
+): Promise<TLSSocket> {
+  const socket = await connectSocksSocket(proxyPort, selected, port, signal);
+  return new Promise((resolve, reject) => {
+    const tlsSocket = connectTls({
+      socket,
+      servername,
+      rejectUnauthorized,
+    });
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const onAbort = () => tlsSocket.destroy(abortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    tlsSocket.once('secureConnect', () => {
+      cleanup();
+      resolve(tlsSocket);
+    });
+    tlsSocket.once('error', (error) => {
+      cleanup();
+      reject(error instanceof Error ? error : new Error('Tunneled TLS connection failed'));
+    });
+    // SOCKS framing pauses the raw transport until TLS has taken ownership.
+    socket.resume();
+    tlsSocket.resume();
+  });
+}
+
+async function requestOnce(
   url: URL,
   selected: ResolvedAddress,
   input: {
@@ -389,8 +420,19 @@ function requestOnce(
   },
   insecureTlsForTesting: boolean,
 ): Promise<{ measurement: HttpsMeasurement; location?: string }> {
+  const startedAt = performance.now();
+  const tunneledSocket =
+    input.proxyPort === undefined
+      ? undefined
+      : await createTlsSocketThroughSocks(
+          input.proxyPort,
+          selected,
+          url.port ? Number(url.port) : 443,
+          url.hostname,
+          !insecureTlsForTesting,
+          input.signal,
+        );
   return new Promise((resolve, reject) => {
-    const startedAt = performance.now();
     let settled = false;
     const finish = (
       error: Error | null,
@@ -421,34 +463,13 @@ function requestOnce(
           connection: 'close',
         },
         rejectUnauthorized: !insecureTlsForTesting,
-        lookup: createPinnedLookup(selected),
-        ...(input.proxyPort === undefined
-          ? {}
+        ...(tunneledSocket
+          ? {
+              agent: false,
+              createConnection: () => tunneledSocket,
+            }
           : {
-              createConnection: (
-                _options: ClientRequestArgs,
-                callback: (error: Error | null, socket: Duplex) => void,
-              ): null => {
-                void connectSocksSocket(input.proxyPort!, selected, port, input.signal)
-                  .then((socket) => {
-                    const tlsSocket = connectTls({
-                      socket,
-                      servername: url.hostname,
-                      rejectUnauthorized: !insecureTlsForTesting,
-                    });
-                    tlsSocket.once('secureConnect', () => callback(null, tlsSocket));
-                    tlsSocket.once('error', (error: Error) =>
-                      callback(error, undefined as unknown as Duplex),
-                    );
-                    // SOCKS framing deliberately leaves the raw socket paused so
-                    // no tunneled bytes can be consumed before TLS owns it. Node
-                    // 24 does not resume this async createConnection path.
-                    socket.resume();
-                    tlsSocket.resume();
-                  })
-                  .catch((error: Error) => callback(error, undefined as unknown as Duplex));
-                return null;
-              },
+              lookup: createPinnedLookup(selected),
             }),
       },
       (response) => {
