@@ -241,7 +241,20 @@ const formalConfig = {
       },
     },
   ],
-  outbounds: [{ tag: 'direct', protocol: 'freedom' }],
+  outbounds: [
+    {
+      tag: 'direct',
+      protocol: 'freedom',
+      settings: {
+        // Xray's server-side Freedom safety policy blocks private targets by
+        // default. This isolated fixture permits only its loopback HTTPS port.
+        finalRules: [
+          { action: 'allow', network: 'tcp', port: 443, ip: ['127.0.0.1/32'] },
+          { action: 'block' },
+        ],
+      },
+    },
+  ],
 };
 const appliedFixture = await fetch('http://proxyhub-agent:3001/xray/apply', {
   method: 'POST',
