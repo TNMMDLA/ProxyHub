@@ -120,6 +120,35 @@ const jsonRequest = (path, method, body) =>
     headers: body === undefined ? {} : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+const requestPublicSubscriptionThroughCaddy = async (path) => {
+  const { request } = await import('node:https');
+  return new Promise((resolve, reject) => {
+    const outgoing = request(
+      {
+        hostname: 'caddy',
+        port: 443,
+        path,
+        method: 'GET',
+        servername: 'localhost',
+        rejectUnauthorized: false,
+        headers: { host: 'localhost' },
+      },
+      (response) => {
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () =>
+          resolve({
+            status: response.statusCode,
+            contentType: response.headers['content-type'] ?? '',
+            body: Buffer.concat(chunks).toString('utf8'),
+          }),
+        );
+      },
+    );
+    outgoing.on('error', reject);
+    outgoing.end();
+  });
+};
 
 const setup = await authenticated('/api/setup/progress');
 const setupBody = await setup.json();
@@ -195,17 +224,52 @@ await ensureResource('/api/rule-sets', 'Runtime Phase 3 Rules', {
   format: 'PLAIN_TEXT',
   enabled: true,
 });
-const fixtureSubscription = await ensureResource(
-  '/api/subscriptions',
-  'Runtime Phase 3 Subscription',
-  {
-    name: 'Runtime Phase 3 Subscription',
-    policyId: fixturePolicy.id,
-    format: 'raw',
-    enabled: true,
-    expiresAt: null,
-  },
-);
+const issuePublicSubscription = async (format) => {
+  const name = `Runtime Public ${format} Subscription`;
+  const existing = (await listData('/api/subscriptions')).find((item) => item.name === name);
+  const response = existing
+    ? await jsonRequest(`/api/subscriptions/${existing.id}/rotate-token`, 'POST')
+    : await jsonRequest('/api/subscriptions', 'POST', {
+        name,
+        policyId: fixturePolicy.id,
+        format,
+        enabled: true,
+        expiresAt: null,
+      });
+  const body = await response.json();
+  if (!response.ok || !body?.success || !body.data?.subscription || !body.data?.token) {
+    throw new Error(`Issuing ${format} public subscription failed`);
+  }
+  return body.data;
+};
+const publicSubscriptions = [];
+for (const format of ['mihomo', 'sing-box', 'raw']) {
+  publicSubscriptions.push({ format, ...(await issuePublicSubscription(format)) });
+}
+const fixtureSubscription = publicSubscriptions.find(({ format }) => format === 'raw').subscription;
+
+const expectedContentTypes = {
+  mihomo: 'text/yaml',
+  'sing-box': 'application/json',
+  raw: 'text/plain',
+};
+for (const fixture of publicSubscriptions) {
+  const publicResponse = await requestPublicSubscriptionThroughCaddy(
+    `/sub/${fixture.token}`,
+  );
+  if (
+    publicResponse.status !== 200 ||
+    !publicResponse.contentType.toLowerCase().startsWith(expectedContentTypes[fixture.format]) ||
+    publicResponse.contentType.toLowerCase().startsWith('text/html') ||
+    /<!doctype\s+html/i.test(publicResponse.body)
+  ) {
+    throw new Error(
+      `Caddy routed ${fixture.format} subscription incorrectly: ` +
+        `status=${publicResponse.status} content-type=${publicResponse.contentType}`,
+    );
+  }
+}
+console.log('Caddy public subscription routing smoke passed for Mihomo, sing-box and raw.');
 
 const readiness = await jsonRequest(
   `/api/subscriptions/${fixtureSubscription.id}/readiness`,

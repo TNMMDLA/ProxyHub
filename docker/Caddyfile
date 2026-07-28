@@ -5,6 +5,10 @@
     reverse_proxy proxyhub-server:3000
   }
 
+  handle /sub/* {
+    reverse_proxy proxyhub-server:3000
+  }
+
   handle {
     reverse_proxy proxyhub-web:80
   }
@@ -16,4 +20,3 @@
     -Server
   }
 }
-
