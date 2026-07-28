@@ -180,11 +180,9 @@ if (/(privateKey|tokenHash|realityPrivateKeyEncrypted)/i.test(setupSerialized)) 
 
 const { PrismaClient } = await import('@prisma/client');
 const { generateKeyPairSync, randomBytes, randomUUID } = await import('node:crypto');
-const { lookup } = await import('node:dns/promises');
 const prisma = new PrismaClient();
 const fixtureServer = await prisma.server.findFirst({ orderBy: { createdAt: 'asc' } });
 if (!fixtureServer) throw new Error('Phase 3 runtime smoke requires the seeded local server');
-const caddyAddress = await lookup('caddy');
 const keyPair = generateKeyPairSync('x25519');
 const privateKey = keyPair.privateKey.export({ format: 'jwk' }).d;
 const publicKey = keyPair.publicKey.export({ format: 'jwk' }).x;
@@ -206,7 +204,7 @@ const nodeData = {
   realityPrivateKeyEncrypted: 'runtime-encrypted-placeholder',
   shortId: runtimeCredentials.shortId,
   sni: 'localhost',
-  dest: `${caddyAddress.address}:443`,
+  dest: '127.0.0.1:443',
   fingerprint: 'chrome',
   enabled: true,
   status: 'HEALTHY',
@@ -234,7 +232,7 @@ const formalConfig = {
         security: 'reality',
         realitySettings: {
           show: false,
-          dest: `${caddyAddress.address}:443`,
+          dest: '127.0.0.1:443',
           xver: 0,
           serverNames: ['localhost'],
           privateKey: runtimeCredentials.privateKey,

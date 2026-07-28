@@ -24,7 +24,7 @@
 # Docker runtime-test only: keep the synthetic performance fixture off the
 # public panel host while still exercising HTTPS over the isolated Docker
 # network. The upstream is absent outside the runtime-test profile.
-https://caddy {
+https://caddy, https://host.docker.internal {
   tls internal
 
   handle_path /network-perf-fixture/* {
