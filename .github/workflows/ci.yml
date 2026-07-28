@@ -85,7 +85,7 @@ jobs:
       PROXYHUB_NETWORK_PERF_TEST_MODE: 'true'
       PROXYHUB_NETWORK_PERF_TARGET_TIMEOUT_MS: '5000'
       PROXYHUB_NETWORK_PERF_TARGETS_JSON: >-
-        [{"id":"runtime-fixture","label":"Runtime Fixture","smallRequestUrl":"https://host.docker.internal/network-perf-fixture/small","downloadUrl":"https://host.docker.internal/network-perf-fixture/download","enabled":true,"maxDownloadBytes":524288}]
+        [{"id":"runtime-fixture","label":"Runtime Fixture","smallRequestUrl":"https://127.0.0.1/network-perf-fixture/small","downloadUrl":"https://127.0.0.1/network-perf-fixture/download","enabled":true,"maxDownloadBytes":524288}]
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
