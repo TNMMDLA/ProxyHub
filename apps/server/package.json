@@ -21,6 +21,7 @@
     "@fastify/rate-limit": "^10.0.0",
     "@prisma/client": "^6.19.0",
     "@proxyhub/diagnostics-core": "workspace:*",
+    "@proxyhub/network-performance-core": "workspace:*",
     "@proxyhub/policy-core": "workspace:*",
     "@proxyhub/rule-set-core": "workspace:*",
     "@proxyhub/shared": "workspace:*",

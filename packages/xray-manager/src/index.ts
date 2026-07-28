@@ -11,6 +11,10 @@ export {
   type ResolveHostname,
 } from './network-safety.js';
 export { buildRealityCompatibilityConfigs } from './reality-compatibility-config.js';
+export {
+  buildNetworkPerformanceClientConfig,
+  type NetworkPerformanceNodeCredentials,
+} from './network-performance-config.js';
 
 export interface RealityCredentials {
   uuid: string;

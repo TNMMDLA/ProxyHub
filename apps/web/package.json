@@ -12,6 +12,7 @@
   "dependencies": {
     "@hookform/resolvers": "^5.0.0",
     "@proxyhub/diagnostics-core": "workspace:*",
+    "@proxyhub/network-performance-core": "workspace:*",
     "@proxyhub/shared": "workspace:*",
     "@tanstack/react-query": "^5.0.0",
     "i18next": "^25.0.0",

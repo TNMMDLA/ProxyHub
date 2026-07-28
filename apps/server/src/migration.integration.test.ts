@@ -49,7 +49,7 @@ afterEach(async () => {
 });
 
 describe('Prisma migration compatibility', () => {
-  it('creates the complete V0.3 schema from an empty database', async () => {
+  it('creates the complete V0.4 schema from an empty database', async () => {
     const databasePath = (await temporaryDatabase('fresh')).path;
     new DatabaseSync(databasePath).close();
     prisma(['migrate', 'deploy'], databasePath);
@@ -67,12 +67,14 @@ describe('Prisma migration compatibility', () => {
         'RuleSet',
         'RuleSetEntry',
         'RuleSetCache',
+        'NetworkPerformanceRun',
+        'NetworkPerformanceTargetResult',
       ]) {
         expect(tables).toContain(table);
       }
       expect(
         database.prepare('SELECT COUNT(*) AS count FROM _prisma_migrations').get(),
-      ).toMatchObject({ count: 3 });
+      ).toMatchObject({ count: 4 });
       expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally {
       database.close();
@@ -159,7 +161,7 @@ describe('Prisma migration compatibility', () => {
     }
   }, 15_000);
 
-  it('upgrades a populated V0.2.1 database to V0.3 without losing existing records', async () => {
+  it('upgrades a populated V0.2.1 database through V0.4 without losing existing records', async () => {
     const databasePath = (await temporaryDatabase('v021-upgrade')).path;
     const database = new DatabaseSync(databasePath);
     database.exec('PRAGMA foreign_keys = ON');
@@ -239,9 +241,83 @@ describe('Prisma migration compatibility', () => {
         name: 'V0.2.1 Subscription',
       });
       expect(tableNames(upgraded)).toEqual(
-        expect.arrayContaining(['RuleSet', 'RuleSetEntry', 'RuleSetCache']),
+        expect.arrayContaining([
+          'RuleSet',
+          'RuleSetEntry',
+          'RuleSetCache',
+          'NetworkPerformanceRun',
+          'NetworkPerformanceTargetResult',
+        ]),
       );
       expect(upgraded.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  }, 20_000);
+
+  it('upgrades a populated V0.3.1 database to V0.4 and preserves all existing data', async () => {
+    const databasePath = (await temporaryDatabase('v031-upgrade')).path;
+    const database = new DatabaseSync(databasePath);
+    database.exec('PRAGMA foreign_keys = ON');
+    for (const migration of [
+      '20260722000100_init',
+      '20260723000100_v02_policy_subscription',
+      '20260724000100_v03_rule_sets',
+    ]) {
+      database.exec(readFileSync(join(migrations, migration, 'migration.sql'), 'utf8'));
+    }
+    database.exec(`
+      INSERT INTO "Server" ("id", "name", "hostname", "ip", "updatedAt")
+        VALUES ('server-v031', 'V0.3.1 Server', 'v031-vps', '192.0.2.31', CURRENT_TIMESTAMP);
+      INSERT INTO "Node" (
+        "id", "serverId", "name", "host", "port", "uuid", "realityPublicKey",
+        "realityPrivateKeyEncrypted", "shortId", "sni", "dest", "updatedAt"
+      ) VALUES (
+        'node-v031', 'server-v031', 'V0.3.1 Node', 'edge-v031.example.com', 443,
+        '31313131-3131-4131-8131-313131313131', 'public-v031',
+        'encrypted-private-v031', '3131313131313131', 'www.microsoft.com',
+        'www.microsoft.com:443', CURRENT_TIMESTAMP
+      );
+      INSERT INTO "RuleSet" (
+        "id", "name", "sourceType", "format", "updatedAt"
+      ) VALUES ('rules-v031', 'V0.3.1 Rules', 'MANUAL', 'PLAIN_TEXT', CURRENT_TIMESTAMP);
+    `);
+    database.close();
+
+    for (const migration of [
+      '20260722000100_init',
+      '20260723000100_v02_policy_subscription',
+      '20260724000100_v03_rule_sets',
+    ]) {
+      prisma(['migrate', 'resolve', '--applied', migration], databasePath);
+    }
+    prisma(['migrate', 'deploy'], databasePath);
+
+    const upgraded = new DatabaseSync(databasePath);
+    upgraded.exec('PRAGMA foreign_keys = ON');
+    try {
+      expect(upgraded.prepare('SELECT name FROM Node').get()).toMatchObject({
+        name: 'V0.3.1 Node',
+      });
+      expect(upgraded.prepare('SELECT name FROM RuleSet').get()).toMatchObject({
+        name: 'V0.3.1 Rules',
+      });
+      upgraded.exec(`
+        INSERT INTO "NetworkPerformanceRun" (
+          "id", "nodeId", "status", "proxyhubVersion", "buildSha"
+        ) VALUES ('run-v04', 'node-v031', 'COMPLETED', '0.4.0-dev', 'fixture');
+        INSERT INTO "NetworkPerformanceTargetResult" (
+          "id", "runId", "targetId", "targetLabel", "success"
+        ) VALUES ('target-v04', 'run-v04', 'fixture', 'Fixture Target', 1);
+      `);
+      expect(
+        upgraded.prepare('SELECT targetLabel FROM NetworkPerformanceTargetResult').get(),
+      ).toMatchObject({ targetLabel: 'Fixture Target' });
+      expect(upgraded.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+      upgraded.exec("DELETE FROM Node WHERE id = 'node-v031'");
+      expect(
+        upgraded.prepare('SELECT COUNT(*) AS count FROM NetworkPerformanceRun').get(),
+      ).toMatchObject({ count: 0 });
     } finally {
       upgraded.close();
     }

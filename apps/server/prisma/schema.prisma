@@ -129,9 +129,57 @@ model Node {
   createdAt                   DateTime         @default(now())
   updatedAt                   DateTime         @updatedAt
   pools                       NodePoolMember[]
+  performanceRuns             NetworkPerformanceRun[]
 
   @@unique([serverId, port])
   @@index([status, enabled])
+}
+
+model NetworkPerformanceRun {
+  id              String                           @id @default(cuid())
+  nodeId          String
+  node            Node                             @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  status          String                           @default("QUEUED")
+  score           Int?
+  summaryJson     String                           @default("{}")
+  environmentJson String                           @default("{}")
+  startedAt       DateTime                         @default(now())
+  completedAt     DateTime?
+  durationMs      Int?
+  xrayVersion     String?
+  proxyhubVersion String
+  buildSha        String
+  createdAt       DateTime                         @default(now())
+  targetResults   NetworkPerformanceTargetResult[]
+
+  @@index([nodeId, startedAt])
+  @@index([status, startedAt])
+}
+
+model NetworkPerformanceTargetResult {
+  id                    String                @id @default(cuid())
+  runId                 String
+  run                   NetworkPerformanceRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  targetId              String
+  targetLabel           String
+  success               Boolean
+  errorCode             String?
+  directMbps            Float?
+  tunnelMbps            Float?
+  efficiencyPercent     Float?
+  latencyMedianMs       Float?
+  latencyP95Ms          Float?
+  jitterMs              Float?
+  successfulRequests    Int                   @default(0)
+  failedRequests        Int                   @default(0)
+  directSamplesJson     String                @default("[]")
+  tunnelSamplesJson     String                @default("[]")
+  uploadStatus          String                @default("NOT_AVAILABLE")
+  analysisCodesJson     String                @default("[]")
+  createdAt             DateTime              @default(now())
+
+  @@unique([runId, targetId])
+  @@index([runId])
 }
 
 model NodePool {

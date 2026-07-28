@@ -15,7 +15,7 @@ const gitSha = '1234567890abcdef1234567890abcdef12345678';
 describe('release version and manifest', () => {
   it('loads the canonical development version', async () => {
     await expect(readReleaseVersion()).resolves.toMatchObject({
-      version: '0.3.1-dev',
+      version: '0.4.0-dev',
       xrayVersion: '26.5.9',
     });
   });
