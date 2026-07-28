@@ -4,6 +4,10 @@ import type {
   XrayHealthStatus,
 } from '@proxyhub/shared';
 import type { DiagnosticsReport } from '@proxyhub/diagnostics-core';
+import type {
+  NetworkPerformanceProgress,
+  NetworkPerformanceResult,
+} from '@proxyhub/network-performance-core';
 import { config } from './config.js';
 import { AppError } from './errors.js';
 
@@ -30,6 +34,45 @@ export interface AgentClient {
     },
     signal?: AbortSignal,
   ): Promise<RealityTargetCompatibilityResult>;
+  networkPerformanceCapability?(): Promise<{
+    available: boolean;
+    targetCount: number;
+    busy: boolean;
+    maxConcurrentRuns: 1;
+  }>;
+  startNetworkPerformance?(input: {
+    address: string;
+    port: number;
+    uuid: string;
+    flow: 'xtls-rprx-vision';
+    sni: string;
+    publicKey: string;
+    shortId: string;
+    fingerprint: string;
+    enabled: boolean;
+    protocol: string;
+    transport: string;
+    security: 'REALITY';
+    name: string;
+    serverName: string;
+    serverRegion: string;
+    realityTarget: string;
+    proxyhubVersion: string;
+    gitSha: string;
+    deployMode: string;
+  }): Promise<{
+    id: string;
+    status: string;
+    progress: NetworkPerformanceProgress;
+  }>;
+  getNetworkPerformance?(id: string): Promise<{
+    id: string;
+    status: string;
+    progress: NetworkPerformanceProgress;
+    result?: NetworkPerformanceResult;
+    errorCode?: string;
+  }>;
+  cancelNetworkPerformance?(id: string): Promise<{ cancelled: true }>;
   applyConfig(config: Record<string, unknown>): Promise<AgentApplyResult>;
   restart(): Promise<{ restarted: true; health: XrayHealthStatus }>;
   rollback(revision: string): Promise<{ rolledBack: true; health: XrayHealthStatus }>;
@@ -60,11 +103,14 @@ async function agentRequest<T>(
         'REALITY_TARGET_INVALID',
         'REALITY_TARGET_DNS_FAILED',
         'REALITY_TARGET_BLOCKED_ADDRESS',
+        'NETWORK_PERFORMANCE_NODE_DISABLED',
+        'NETWORK_PERFORMANCE_UNSUPPORTED_NODE',
+        'NETWORK_PERFORMANCE_TARGET_INVALID',
       ].includes(code)
         ? 422
-        : code === 'REALITY_TARGET_TEST_BUSY'
+        : code === 'REALITY_TARGET_TEST_BUSY' || code === 'NETWORK_PERFORMANCE_TEST_BUSY'
           ? 409
-          : code === 'REALITY_TARGET_TEST_TIMEOUT'
+          : code === 'REALITY_TARGET_TEST_TIMEOUT' || code === 'NETWORK_PERFORMANCE_TIMEOUT'
             ? 504
             : 503;
       throw new AppError(
@@ -103,6 +149,21 @@ export const defaultAgentClient: AgentClient = {
       '/xray/reality-compatibility',
       { method: 'POST', body: JSON.stringify(input), ...(signal ? { signal } : {}) },
       30_000,
+    ),
+  networkPerformanceCapability: () => agentRequest('/network-performance/capability'),
+  startNetworkPerformance: (input) =>
+    agentRequest(
+      '/network-performance/runs',
+      { method: 'POST', body: JSON.stringify(input) },
+      10_000,
+    ),
+  getNetworkPerformance: (id) =>
+    agentRequest(`/network-performance/runs/${encodeURIComponent(id)}`),
+  cancelNetworkPerformance: (id) =>
+    agentRequest(
+      `/network-performance/runs/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST' },
+      10_000,
     ),
   applyConfig: (xrayConfig) =>
     agentRequest<AgentApplyResult>(

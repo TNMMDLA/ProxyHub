@@ -22,6 +22,8 @@ import { DiagnosticsService } from './diagnostics/service.js';
 import { prisma } from './db.js';
 import { invalidateReadiness } from './subscription-readiness.js';
 import { invalidateSetupProgress } from './setup-progress.js';
+import { NetworkPerformanceService } from './network-performance/service.js';
+import { networkPerformanceRoutes } from './routes/network-performance.js';
 
 export function redactRequestUrl(url: string | undefined): string | undefined {
   return url?.replace(/(\/sub\/)[^/?#]+/g, '$1[REDACTED]');
@@ -29,6 +31,12 @@ export function redactRequestUrl(url: string | undefined): string | undefined {
 
 export async function buildApp(options: { agentClient?: AgentClient; logFile?: string } = {}) {
   const agentClient = options.agentClient ?? defaultAgentClient;
+  const networkPerformance = new NetworkPerformanceService(
+    prisma,
+    agentClient,
+    config.PROXYHUB_NETWORK_PERF_TIMEOUT_MS + 30_000,
+  );
+  await networkPerformance.initialize();
   const app = Fastify({
     logger: {
       level: options.logFile ? 'info' : config.NODE_ENV === 'test' ? 'silent' : 'info',
@@ -110,6 +118,10 @@ export async function buildApp(options: { agentClient?: AgentClient; logFile?: s
   }));
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(nodeRoutes, { prefix: '/api/nodes', agentClient });
+  await app.register(networkPerformanceRoutes, {
+    prefix: '/api/nodes',
+    service: networkPerformance,
+  });
   await app.register(poolRoutes, { prefix: '/api/node-pools' });
   await app.register(policyRoutes, { prefix: '/api/policies' });
   await app.register(ruleSetRoutes, { prefix: '/api/rule-sets' });

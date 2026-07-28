@@ -53,6 +53,12 @@ const envSchema = z
     PROXYHUB_DIAGNOSTICS_MAX_BACKUPS: z.coerce.number().int().min(1).max(200).default(50),
     PROXYHUB_STATE_DIR: z.string().default('/var/lib/proxyhub/state'),
     PROXYHUB_BACKUP_DIR: z.string().default('/var/lib/proxyhub/backups'),
+    PROXYHUB_NETWORK_PERF_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(30_000)
+      .max(300_000)
+      .default(120_000),
   })
   .superRefine((environment, context) => {
     if (environment.NODE_ENV !== 'production') return;

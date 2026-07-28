@@ -72,6 +72,7 @@ function fakeDatabase() {
     }),
     ruleSet: { findMany: vi.fn(async () => []) },
     subscription: { findMany: vi.fn(async () => []) },
+    networkPerformanceRun: { findFirst: vi.fn(async () => null) },
     auditLog: {
       findMany: vi.fn(async () => []),
       count: vi.fn(async () => 0),

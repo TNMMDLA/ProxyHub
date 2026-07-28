@@ -1,10 +1,12 @@
 import { authenticator } from 'otplib';
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { RealityTargetCompatibilityResult, XrayHealthStatus } from '@proxyhub/shared';
+import type { NetworkPerformanceResult } from '@proxyhub/network-performance-core';
 import type { AgentClient } from './agent-client.js';
 import { prisma } from './db.js';
 import { buildApp } from './app.js';
@@ -27,6 +29,73 @@ let applyCalls = 0;
 let compatibilityCalls = 0;
 let nextCompatibilityStatus: RealityTargetCompatibilityResult['status'] = 'COMPATIBLE';
 const appliedInboundCounts: number[] = [];
+let holdPerformanceRun = false;
+const performanceAgentRuns = new Map<string, { status: string; cancelled?: boolean }>();
+const performanceResult: NetworkPerformanceResult = {
+  status: 'COMPLETED',
+  score: {
+    overall: 91,
+    throughput: 90,
+    successRate: 100,
+    stability: 95,
+    connectionRating: 'EXCELLENT',
+    throughputRating: 'EXCELLENT',
+    stabilityRating: 'EXCELLENT',
+    overallRating: 'EXCELLENT',
+  },
+  tunnelEstablishmentMs: 32,
+  medianDirectMbps: 80,
+  medianTunnelMbps: 72,
+  successRatePercent: 100,
+  analysisCodes: ['TUNNEL_EFFICIENCY_HEALTHY'],
+  durationMs: 1250,
+  targets: [
+    {
+      targetId: 'fixture',
+      targetLabel: 'Fixture Target',
+      success: true,
+      direct: {
+        downloadMbps: 80,
+        downloadSamplesMbps: [79, 81],
+        latencyMedianMs: 10,
+        latencyP95Ms: 12,
+        jitterMs: 1,
+        successfulRequests: 5,
+        failedRequests: 0,
+      },
+      tunnel: {
+        downloadMbps: 72,
+        downloadSamplesMbps: [71, 73],
+        latencyMedianMs: 15,
+        latencyP95Ms: 18,
+        jitterMs: 2,
+        successfulRequests: 5,
+        failedRequests: 0,
+      },
+      efficiencyPercent: 90,
+      uploadStatus: 'NOT_AVAILABLE',
+      analysisCodes: [],
+    },
+  ],
+  environment: {
+    source: 'PROXYHUB_SERVER',
+    serverName: 'Integration VPS',
+    serverRegion: 'Local',
+    nodeName: 'Tokyo Edge',
+    nodePort: 443,
+    protocol: 'VLESS',
+    transport: 'TCP',
+    security: 'REALITY',
+    flow: 'xtls-rprx-vision',
+    realityTarget: 'www.microsoft.com:443',
+    sni: 'www.microsoft.com',
+    xrayVersion: 'Xray 26.5.9',
+    proxyhubVersion: '0.4.0-dev',
+    gitSha: 'unknown',
+    deployMode: 'source',
+    testedAt: new Date().toISOString(),
+  },
+};
 const compatibilityResult = (
   status: RealityTargetCompatibilityResult['status'],
 ): RealityTargetCompatibilityResult => ({
@@ -55,6 +124,71 @@ const agentClient: AgentClient = {
     nextCompatibilityStatus = 'COMPATIBLE';
     return compatibilityResult(status);
   },
+  networkPerformanceCapability: async () => ({
+    available: true,
+    targetCount: 1,
+    busy: holdPerformanceRun,
+    maxConcurrentRuns: 1,
+  }),
+  startNetworkPerformance: async () => {
+    const id = randomUUID();
+    performanceAgentRuns.set(id, { status: 'RUNNING' });
+    return {
+      id,
+      status: 'RUNNING',
+      progress: {
+        stage: 'PREPARING',
+        currentTarget: 0,
+        totalTargets: 1,
+        remainingSteps: 4,
+      },
+    };
+  },
+  getNetworkPerformance: async (id) => {
+    const run = performanceAgentRuns.get(id);
+    if (!run) throw new Error('missing synthetic performance run');
+    if (run.cancelled) {
+      return {
+        id,
+        status: 'CANCELLED',
+        errorCode: 'NETWORK_PERFORMANCE_CANCELLED',
+        progress: {
+          stage: 'TESTING_TARGET',
+          currentTarget: 1,
+          totalTargets: 1,
+          remainingSteps: 2,
+        },
+      };
+    }
+    if (holdPerformanceRun) {
+      return {
+        id,
+        status: 'RUNNING',
+        progress: {
+          stage: 'TESTING_TARGET',
+          currentTarget: 1,
+          totalTargets: 1,
+          remainingSteps: 2,
+        },
+      };
+    }
+    return {
+      id,
+      status: 'COMPLETED',
+      result: performanceResult,
+      progress: {
+        stage: 'COMPLETED',
+        currentTarget: 1,
+        totalTargets: 1,
+        remainingSteps: 0,
+      },
+    };
+  },
+  cancelNetworkPerformance: async (id) => {
+    const run = performanceAgentRuns.get(id);
+    if (run) run.cancelled = true;
+    return { cancelled: true };
+  },
   applyConfig: async (config) => {
     applyCalls += 1;
     appliedInboundCounts.push(Array.isArray(config.inbounds) ? config.inbounds.length : -1);
@@ -82,6 +216,7 @@ describe('ProxyHub foundation API', () => {
   let policyPoolId = '';
   let subscriptionId = '';
   let subscriptionToken = '';
+  let nodeId = '';
 
   beforeAll(async () => {
     app = await buildApp({ agentClient });
@@ -153,6 +288,7 @@ describe('ProxyHub foundation API', () => {
       },
     });
     expect(response.statusCode, response.body).toBe(201);
+    nodeId = response.json().data.id as string;
     const node = response.json().data;
     expect(node.protocol).toBe('VLESS');
     expect(node.realityPublicKey).toBeTruthy();
@@ -213,6 +349,119 @@ describe('ProxyHub foundation API', () => {
     });
     expect(deleted.statusCode, deleted.body).toBe(200);
     expect(applyCalls).toBeGreaterThanOrEqual(6);
+  });
+
+  it('runs, persists, retains and cancels sanitized network performance tests', async () => {
+    const capability = await app.inject({
+      method: 'GET',
+      url: '/api/nodes/performance-tests/capability',
+      headers: { cookie },
+    });
+    expect(capability.statusCode, capability.body).toBe(200);
+    expect(capability.json().data).toMatchObject({
+      available: true,
+      targetCount: 1,
+      maxConcurrentRuns: 1,
+    });
+
+    await prisma.networkPerformanceRun.createMany({
+      data: Array.from({ length: 10 }, (_, index) => ({
+        id: `performance-history-${String(index)}`,
+        nodeId,
+        status: 'INTERRUPTED',
+        proxyhubVersion: '0.3.1-dev',
+        buildSha: 'history',
+        startedAt: new Date(Date.now() - (index + 1) * 60_000),
+      })),
+    });
+    const started = await app.inject({
+      method: 'POST',
+      url: `/api/nodes/${nodeId}/performance-tests`,
+      headers: { cookie },
+    });
+    expect(started.statusCode, started.body).toBe(202);
+    const runId = started.json().data.id as string;
+
+    let completed:
+      | {
+          status: string;
+          score: number | null;
+          targetResults: unknown[];
+        }
+      | undefined;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/nodes/${nodeId}/performance-tests/${runId}`,
+        headers: { cookie },
+      });
+      completed = response.json().data;
+      if (completed?.status !== 'RUNNING') break;
+    }
+    expect(completed).toMatchObject({ status: 'COMPLETED', score: 91 });
+    expect(completed?.targetResults).toHaveLength(1);
+
+    const history = await app.inject({
+      method: 'GET',
+      url: `/api/nodes/${nodeId}/performance-tests`,
+      headers: { cookie },
+    });
+    expect(history.statusCode, history.body).toBe(200);
+    expect(history.json().data).toHaveLength(10);
+    expect(history.json().data[0].id).toBe(runId);
+
+    holdPerformanceRun = true;
+    const cancellable = await app.inject({
+      method: 'POST',
+      url: `/api/nodes/${nodeId}/performance-tests`,
+      headers: { cookie },
+    });
+    expect(cancellable.statusCode, cancellable.body).toBe(202);
+    const cancellableId = cancellable.json().data.id as string;
+    const busy = await app.inject({
+      method: 'POST',
+      url: `/api/nodes/${nodeId}/performance-tests`,
+      headers: { cookie },
+    });
+    expect(busy.statusCode, busy.body).toBe(409);
+    expect(busy.json().error.code).toBe('NETWORK_PERFORMANCE_TEST_BUSY');
+    const cancel = await app.inject({
+      method: 'POST',
+      url: `/api/nodes/${nodeId}/performance-tests/${cancellableId}/cancel`,
+      headers: { cookie },
+    });
+    expect(cancel.statusCode, cancel.body).toBe(200);
+    holdPerformanceRun = false;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const cancelled = await app.inject({
+      method: 'GET',
+      url: `/api/nodes/${nodeId}/performance-tests/${cancellableId}`,
+      headers: { cookie },
+    });
+    expect(cancelled.json().data.status).toBe('CANCELLED');
+
+    const node = await prisma.node.findUniqueOrThrow({ where: { id: nodeId } });
+    const stored = JSON.stringify({
+      runs: await prisma.networkPerformanceRun.findMany({
+        where: { nodeId },
+        include: { targetResults: true },
+      }),
+      audit: await prisma.auditLog.findMany({
+        where: { action: { contains: 'NETWORK_PERFORMANCE' } },
+      }),
+      notifications: await prisma.notification.findMany({
+        where: { eventType: { contains: 'NETWORK_PERFORMANCE' } },
+      }),
+    });
+    for (const secret of [
+      node.uuid,
+      node.realityPublicKey,
+      node.shortId,
+      node.realityPrivateKeyEncrypted,
+    ]) {
+      expect(stored).not.toContain(secret);
+    }
   });
 
   it('creates a node pool, dashboard activity and web notifications', async () => {

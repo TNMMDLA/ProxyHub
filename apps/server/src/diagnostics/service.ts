@@ -24,7 +24,13 @@ import { SafeReaderError, SafeStateReader } from './safe-reader.js';
 
 type Database = Pick<
   PrismaClient,
-  'adminUser' | 'auditLog' | 'notification' | 'ruleSet' | 'subscription' | '$queryRawUnsafe'
+  | 'adminUser'
+  | 'auditLog'
+  | 'notification'
+  | 'networkPerformanceRun'
+  | 'ruleSet'
+  | 'subscription'
+  | '$queryRawUnsafe'
 >;
 
 const nowIso = () => new Date().toISOString();
@@ -749,35 +755,41 @@ export class DiagnosticsService {
     deep: boolean,
     signal?: AbortSignal,
   ): Promise<DiagnosticItem[]> {
-    const [ruleSets, subscriptions, realityAudit] = await Promise.all([
-      this.database.ruleSet.findMany({
-        select: {
-          enabled: true,
-          status: true,
-          lastSuccessAt: true,
-          lastFetchAt: true,
-          nextUpdateAt: true,
-          ruleCount: true,
-          sourceType: true,
-          format: true,
-        },
-      }),
-      this.database.subscription.findMany({
-        select: {
-          enabled: true,
-          format: true,
-          expiresAt: true,
-          lastAccessAt: true,
-          policyId: true,
-        },
-      }),
-      this.database.auditLog.findMany({
-        where: { action: { contains: 'REALITY' } },
-        select: { result: true, createdAt: true },
-        take: 50,
-        orderBy: { createdAt: 'desc' },
-      }),
-    ]);
+    const [ruleSets, subscriptions, realityAudit, recentPerformance, performanceCapability] =
+      await Promise.all([
+        this.database.ruleSet.findMany({
+          select: {
+            enabled: true,
+            status: true,
+            lastSuccessAt: true,
+            lastFetchAt: true,
+            nextUpdateAt: true,
+            ruleCount: true,
+            sourceType: true,
+            format: true,
+          },
+        }),
+        this.database.subscription.findMany({
+          select: {
+            enabled: true,
+            format: true,
+            expiresAt: true,
+            lastAccessAt: true,
+            policyId: true,
+          },
+        }),
+        this.database.auditLog.findMany({
+          where: { action: { contains: 'REALITY' } },
+          select: { result: true, createdAt: true },
+          take: 50,
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.database.networkPerformanceRun.findFirst({
+          orderBy: { startedAt: 'desc' },
+          select: { status: true, startedAt: true, completedAt: true, score: true },
+        }),
+        this.agent.networkPerformanceCapability?.().catch(() => null) ?? Promise.resolve(null),
+      ]);
     const failedRules = ruleSets.filter((rule) => rule.status === 'ERROR').length;
     const staleRules = ruleSets.filter((rule) => rule.status === 'STALE').length;
     const expired = subscriptions.filter(
@@ -884,6 +896,33 @@ export class DiagnosticsService {
               : expired
                 ? 'SUBSCRIPTIONS_EXPIRED'
                 : null,
+        },
+        started,
+      ),
+      this.item(
+        {
+          id: 'network-performance.summary',
+          category: 'NETWORK',
+          status: performanceCapability?.available ? 'HEALTHY' : 'NOT_AVAILABLE',
+          title: 'Network Performance Capability',
+          summary: performanceCapability?.available
+            ? `${performanceCapability.targetCount} target(s) configured; tests run only on demand`
+            : 'Network performance targets are not configured or the Agent is unavailable',
+          source: 'agent-and-database',
+          scope: 'application',
+          details: {
+            available: performanceCapability?.available ?? false,
+            targetCount: performanceCapability?.targetCount ?? 0,
+            busy: performanceCapability?.busy ?? false,
+            autoRun: false,
+            recentStatus: recentPerformance?.status ?? null,
+            lastTestAt: recentPerformance?.startedAt?.toISOString() ?? null,
+            lastScore: recentPerformance?.score ?? null,
+          },
+          recommendations: performanceCapability?.available
+            ? ['Open Nodes and start a Network Performance Test when needed.']
+            : ['Configure the Agent performance Target Registry before running a test.'],
+          errorCode: performanceCapability?.available ? null : 'NETWORK_PERFORMANCE_NOT_AVAILABLE',
         },
         started,
       ),
