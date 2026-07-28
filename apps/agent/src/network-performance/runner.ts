@@ -82,7 +82,11 @@ export interface PerformanceRunnerRuntime {
   allocatePort(signal: AbortSignal): Promise<number>;
   createDirectory(): Promise<string>;
   writeConfig(directory: string, config: Record<string, unknown>): Promise<string>;
-  startXray(binary: string, configPath: string): Promise<ManagedTemporaryXray>;
+  startXray(
+    binary: string,
+    configPath: string,
+    onDiagnostic?: (message: string) => void,
+  ): Promise<ManagedTemporaryXray>;
   waitForPort(port: number, process: ManagedTemporaryXray, signal: AbortSignal): Promise<void>;
   measure(
     input: { url: string; signal: AbortSignal; maxBytes: number; proxyPort?: number },
@@ -256,8 +260,17 @@ export class NetworkPerformanceRunner {
       const tunnelStartedAt = performance.now();
       directory = await this.runtime.createDirectory();
       const config = buildNetworkPerformanceClientConfig({ socksPort, node });
+      if (this.options.onDiagnostic) {
+        (config.log as Record<string, unknown>).loglevel = 'debug';
+      }
       const configPath = await this.runtime.writeConfig(directory, config);
-      temporaryXray = await this.runtime.startXray(this.options.binary, configPath);
+      temporaryXray = await this.runtime.startXray(
+        this.options.binary,
+        configPath,
+        this.options.onDiagnostic
+          ? (message) => this.options.onDiagnostic?.(`XRAY ${message}`)
+          : undefined,
+      );
       await this.runtime.waitForPort(socksPort, temporaryXray, controller.signal);
       const tunnelEstablishmentMs = performance.now() - tunnelStartedAt;
       const targets: NetworkPerformanceTargetResult[] = [];

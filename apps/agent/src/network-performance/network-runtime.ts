@@ -28,7 +28,10 @@ class NativeTemporaryXray implements ManagedTemporaryXray {
   private readonly exit: Promise<void>;
   private failed = false;
 
-  constructor(private readonly child: ChildProcessWithoutNullStreams) {
+  constructor(
+    private readonly child: ChildProcessWithoutNullStreams,
+    onDiagnostic?: (message: string) => void,
+  ) {
     this.exit = new Promise((resolve) => {
       child.once('close', () => resolve());
       child.once('error', () => {
@@ -37,7 +40,22 @@ class NativeTemporaryXray implements ManagedTemporaryXray {
       });
     });
     child.stdout.resume();
-    child.stderr.resume();
+    if (onDiagnostic) {
+      child.stderr.on('data', (chunk: Buffer) => {
+        const sanitized = chunk
+          .toString('utf8')
+          .replace(
+            /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/giu,
+            '[REDACTED]',
+          )
+          .replace(/\b[A-Za-z0-9_-]{32,}\b/gu, '[REDACTED]')
+          .trim()
+          .slice(0, 2_000);
+        if (sanitized) onDiagnostic(sanitized);
+      });
+    } else {
+      child.stderr.resume();
+    }
   }
 
   isAlive(): boolean {
@@ -96,6 +114,7 @@ export async function writeSecureXrayConfig(
 export async function startTemporaryXray(
   binary: string,
   configPath: string,
+  onDiagnostic?: (message: string) => void,
 ): Promise<ManagedTemporaryXray> {
   await testXrayConfig(binary, configPath);
   return new NativeTemporaryXray(
@@ -104,6 +123,7 @@ export async function startTemporaryXray(
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     }),
+    onDiagnostic,
   );
 }
 
