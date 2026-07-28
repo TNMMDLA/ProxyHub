@@ -440,6 +440,10 @@ function requestOnce(
                     tlsSocket.once('error', (error: Error) =>
                       callback(error, undefined as unknown as Duplex),
                     );
+                    // SOCKS framing deliberately leaves the raw socket paused so
+                    // no tunneled bytes can be consumed before TLS owns it. Node
+                    // 24 does not resume this async createConnection path.
+                    tlsSocket.resume();
                   })
                   .catch((error: Error) => callback(error, undefined as unknown as Duplex));
                 return null;
