@@ -235,7 +235,7 @@ jobs:
           COMPOSE_PROFILES=runtime-test
           PROXYHUB_NETWORK_PERF_TEST_MODE=true
           PROXYHUB_NETWORK_PERF_TARGET_TIMEOUT_MS=5000
-          PROXYHUB_NETWORK_PERF_TARGETS_JSON=[{"id":"runtime-fixture","label":"Runtime Fixture","smallRequestUrl":"https://127.0.0.1/network-perf-fixture/small","downloadUrl":"https://127.0.0.1/network-perf-fixture/download","enabled":true,"maxDownloadBytes":524288}]
+          PROXYHUB_NETWORK_PERF_TARGETS_JSON=[{"id":"runtime-fixture","label":"Runtime Fixture","smallRequestUrl":"https://host.docker.internal/network-perf-fixture/small","downloadUrl":"https://host.docker.internal/network-perf-fixture/download","enabled":true,"maxDownloadBytes":524288}]
           EOF
           echo "COMPOSE_PROJECT_NAME=proxyhub-release-${GITHUB_RUN_ID}" >>"$GITHUB_ENV"
           echo "COMPOSE_FILE=$GITHUB_WORKSPACE/docker-compose.yml:$GITHUB_WORKSPACE/docker-compose.release.yml" >>"$GITHUB_ENV"

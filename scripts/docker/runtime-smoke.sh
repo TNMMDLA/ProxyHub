@@ -247,9 +247,9 @@ const formalConfig = {
       protocol: 'freedom',
       settings: {
         // Xray's server-side Freedom safety policy blocks private targets by
-        // default. This isolated fixture permits only its loopback HTTPS port.
+        // default. This fixture permits only HTTPS to Docker's private gateway.
         finalRules: [
-          { action: 'allow', network: 'tcp', port: 443, ip: ['127.0.0.1/32'] },
+          { action: 'allow', network: 'tcp', port: 443, ip: ['172.16.0.0/12'] },
           { action: 'block' },
         ],
       },
