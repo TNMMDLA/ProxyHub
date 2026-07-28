@@ -83,7 +83,7 @@ docker compose exec proxyhub-server \
   pnpm --filter @proxyhub/server exec prisma migrate status
 ```
 
-Expected: the foundation, additive V0.2, and additive V0.3 migrations are present and the database schema is up to date. Confirm `Policy`, `PolicyRule`, `Subscription`, `RuleSet`, `RuleSetEntry`, and `RuleSetCache` exist without rebuilding or dropping prior tables. Restart the stack once and confirm the SQLite volume retains the same administrator, server, node, pool, policy, rule, and subscription records.
+Expected: the foundation, additive V0.2, additive V0.3, and additive V0.4 migrations are present and the database schema is up to date. Confirm `Policy`, `PolicyRule`, `Subscription`, `RuleSet`, `RuleSetEntry`, `RuleSetCache`, `NetworkPerformanceRun`, and `NetworkPerformanceTargetResult` exist without rebuilding or dropping prior tables. Restart the stack once and confirm the SQLite volume retains the same administrator, server, node, pool, policy, rule, subscription, and performance-history records.
 
 ## 5. Backend and HTTPS
 
@@ -239,6 +239,22 @@ For the staging failure test, verify the audit result is `FAILURE`, the notifica
 9. Exercise Rule Sets and Policy Studio at 390 px with no horizontal overflow or browser console warnings.
 
 ## 15. Final acceptance
+
+Before final acceptance, complete the V0.4 Phase 1 performance test with controlled HTTPS targets:
+
+1. Configure one to five targets in `PROXYHUB_NETWORK_PERF_TARGETS_JSON`, keep `PROXYHUB_NETWORK_PERF_TEST_MODE=false`, and restart only the services needed to load the environment.
+2. Record the formal Xray PID and `sha256sum /etc/xray/config.json`.
+3. From **Nodes**, open an enabled VLESS/TCP/REALITY/Vision node and start **Network Performance Test**.
+4. Confirm the UI explicitly says the test runs from the ProxyHub server and does not represent the final user's ISP-to-VPS path.
+5. Confirm the run progresses through preparation, tunnel establishment, target testing, and calculation, then shows direct/tunnel throughput, efficiency, latency median/p95, jitter, success rate, ratings, analysis, and safe environment metadata.
+6. Start a second run while the first is active and confirm the stable busy response. Cancel the first and confirm `CANCELLED`.
+7. Exercise a controlled partial target failure and a controlled timeout. Confirm `PARTIAL`/`FAILED` states are visible, no fake metrics appear, and the Agent accepts a later run.
+8. Confirm at most ten recent records remain for the node and Diagnostics shows only the lightweight summary without starting traffic.
+9. Recheck the formal Xray PID and config checksum; both must be unchanged.
+10. Search Server/Agent/Caddy logs, audit metadata, notifications, and API responses for the node UUID, Reality private key, Agent token, or target query secrets. None may appear.
+11. Confirm no recognized benchmark temporary directory/process remains after success, failure, cancellation, or timeout.
+
+This is a server-side benchmark only. Separately test real client traffic from the intended user networks; do not infer end-user speed from this result.
 
 ```bash
 docker compose ps

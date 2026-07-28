@@ -17,6 +17,12 @@ Set unique `ENCRYPTION_KEY` and `AGENT_TOKEN` values, then configure `PANEL_DOMA
 `WEB_ORIGIN`. Preserve the encryption key in a separate secure system; database backups do not
 contain it.
 
+To enable the V0.4 Phase 1 Network Performance Test, configure
+`PROXYHUB_NETWORK_PERF_TARGETS_JSON` with one to five controlled HTTPS targets as described in
+[network-performance.md](network-performance.md). The registry is intentionally empty by default.
+Keep `PROXYHUB_NETWORK_PERF_TEST_MODE=false` in production. Review the target provider's usage
+terms and bandwidth cost before enabling repeated tests.
+
 Obtain the release manifest artifact from the matching successful GitHub Actions run and verify
 its provenance and Git SHA.
 
@@ -48,3 +54,5 @@ Passing CI is not production acceptance. The real Hong Kong VPS still requires:
 
 - Reality Target Compatibility Hotfix deployment and verification
 - V0.3.1 Phase 1 fresh/update/rollback/backup smoke testing
+- V0.4 Phase 1 completed/partial/failure/cancellation performance runs against controlled HTTPS
+  targets, including proof that the formal Xray PID and active config checksum remain unchanged

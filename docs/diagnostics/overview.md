@@ -4,6 +4,8 @@ ProxyHub V0.3.1 Phase 2 adds an administrator-only, read-only Diagnostics Center
 
 Overview checks are intentionally cheap: Server and Agent reachability, Xray health, SQLite connectivity and migration records, database filesystem capacity, current release state, backup archive metadata, and database-only Rule Set and Subscription summaries.
 
+V0.4 Phase 1 adds a lightweight Network Performance summary containing Agent capability, configured target count, current busy state, and the most recent persisted status/time/score. Diagnostics never starts a performance run or downloads benchmark data. Use the explicit action on the Nodes page for an on-demand test.
+
 Manual deep diagnostics add bounded Xray config validation and SQLite `PRAGMA quick_check`. Only one deep scan can run per Server, it has a 30-second default timeout, supports request cancellation, and writes an audit record. It never performs a deployment, restart, configuration apply, migration, backup restore, remote Rule Set fetch, or Reality compatibility test.
 
 Statuses are `HEALTHY`, `WARNING`, `CRITICAL`, `UNKNOWN`, `NOT_AVAILABLE`, and `NOT_APPLICABLE`. `NOT_AVAILABLE` means the deployment does not expose a reliable data source; it is not treated as healthy. Every check includes its source, scope, observation time, freshness, stable ID, and safe recommendations.
