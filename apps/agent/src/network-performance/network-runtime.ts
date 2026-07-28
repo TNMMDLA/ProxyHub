@@ -288,6 +288,7 @@ export interface SafeHttpsRuntimeOptions {
   allowPrivateTargets?: boolean;
   insecureTlsForTesting?: boolean;
   maxRedirects?: number;
+  onDiagnostic?: (stage: string) => void;
 }
 
 export interface HttpsMeasurement {
@@ -364,6 +365,7 @@ export async function measureHttps(
       selected,
       input,
       options.insecureTlsForTesting ?? false,
+      options.onDiagnostic,
     );
     if (result.location && [301, 302, 303, 307, 308].includes(result.measurement.statusCode)) {
       if (redirect === maxRedirects) throw new Error('NETWORK_PERFORMANCE_REDIRECT_LIMIT');
@@ -385,8 +387,10 @@ async function createTlsSocketThroughSocks(
   servername: string,
   rejectUnauthorized: boolean,
   signal: AbortSignal,
+  onDiagnostic?: (stage: string) => void,
 ): Promise<TLSSocket> {
   const socket = await connectSocksSocket(proxyPort, selected, port, signal);
+  onDiagnostic?.('SOCKS_CONNECTED');
   return new Promise((resolve, reject) => {
     const tlsSocket = connectTls({
       socket,
@@ -398,6 +402,7 @@ async function createTlsSocketThroughSocks(
     signal.addEventListener('abort', onAbort, { once: true });
     tlsSocket.once('secureConnect', () => {
       cleanup();
+      onDiagnostic?.('TLS_SECURE');
       resolve(tlsSocket);
     });
     tlsSocket.once('error', (error) => {
@@ -419,6 +424,7 @@ async function requestOnce(
     proxyPort?: number;
   },
   insecureTlsForTesting: boolean,
+  onDiagnostic?: (stage: string) => void,
 ): Promise<{ measurement: HttpsMeasurement; location?: string }> {
   const startedAt = performance.now();
   const tunneledSocket =
@@ -431,6 +437,7 @@ async function requestOnce(
           url.hostname,
           !insecureTlsForTesting,
           input.signal,
+          onDiagnostic,
         );
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -473,6 +480,7 @@ async function requestOnce(
             }),
       },
       (response) => {
+        if (tunneledSocket) onDiagnostic?.('HTTP_RESPONSE');
         const firstByteMs = performance.now() - startedAt;
         let bytes = 0;
         response.on('data', (chunk: Buffer) => {

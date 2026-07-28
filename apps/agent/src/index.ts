@@ -45,6 +45,12 @@ const networkPerformance = new NetworkPerformanceRunner({
   targetTimeoutMs: env.PROXYHUB_NETWORK_PERF_TARGET_TIMEOUT_MS,
   allowPrivateTargets: env.PROXYHUB_NETWORK_PERF_TEST_MODE,
   insecureTlsForTesting: env.PROXYHUB_NETWORK_PERF_TEST_MODE,
+  ...(env.PROXYHUB_NETWORK_PERF_TEST_MODE
+    ? {
+        onDiagnostic: (stage: string) =>
+          app.log.warn({ stage }, 'Network performance test diagnostic'),
+      }
+    : {}),
 });
 
 let xrayOperation = Promise.resolve();

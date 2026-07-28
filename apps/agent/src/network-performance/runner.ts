@@ -111,6 +111,7 @@ export interface NetworkPerformanceRunnerOptions {
   downloadSamples?: number;
   allowPrivateTargets?: boolean;
   insecureTlsForTesting?: boolean;
+  onDiagnostic?: (stage: string) => void;
   runtime?: Partial<PerformanceRunnerRuntime>;
 }
 
@@ -385,6 +386,7 @@ export class NetworkPerformanceRunner {
       allowPrivateTargets: this.options.allowPrivateTargets ?? false,
       insecureTlsForTesting: this.options.insecureTlsForTesting ?? false,
       maxRedirects: 3,
+      ...(this.options.onDiagnostic ? { onDiagnostic: this.options.onDiagnostic } : {}),
     };
     try {
       for (let sample = 0; sample < (this.options.smallRequestSamples ?? 5); sample += 1) {
