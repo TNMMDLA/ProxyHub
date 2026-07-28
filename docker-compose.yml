@@ -26,6 +26,7 @@ services:
       PROXYHUB_DIAGNOSTICS_DEEP_TIMEOUT_MS: ${PROXYHUB_DIAGNOSTICS_DEEP_TIMEOUT_MS:-30000}
       PROXYHUB_DIAGNOSTICS_MAX_HISTORY: ${PROXYHUB_DIAGNOSTICS_MAX_HISTORY:-20}
       PROXYHUB_DIAGNOSTICS_MAX_BACKUPS: ${PROXYHUB_DIAGNOSTICS_MAX_BACKUPS:-50}
+      PROXYHUB_NETWORK_PERF_TIMEOUT_MS: ${PROXYHUB_NETWORK_PERF_TIMEOUT_MS:-120000}
       PROXYHUB_STATE_DIR: /var/lib/proxyhub/state
       PROXYHUB_BACKUP_DIR: /var/lib/proxyhub/backups
     volumes:
@@ -94,6 +95,11 @@ services:
       XRAY_PROBE_HOST: host.docker.internal
       XRAY_HEALTH_TIMEOUT_MS: ${XRAY_HEALTH_TIMEOUT_MS:-12000}
       REALITY_COMPATIBILITY_TIMEOUT_MS: ${REALITY_COMPATIBILITY_TIMEOUT_MS:-20000}
+      PROXYHUB_NETWORK_PERF_TARGETS_JSON: ${PROXYHUB_NETWORK_PERF_TARGETS_JSON:-}
+      PROXYHUB_NETWORK_PERF_TIMEOUT_MS: ${PROXYHUB_NETWORK_PERF_TIMEOUT_MS:-120000}
+      PROXYHUB_NETWORK_PERF_TARGET_TIMEOUT_MS: ${PROXYHUB_NETWORK_PERF_TARGET_TIMEOUT_MS:-20000}
+      PROXYHUB_NETWORK_PERF_NODE_HOST: ${PROXYHUB_NETWORK_PERF_NODE_HOST:-host.docker.internal}
+      PROXYHUB_NETWORK_PERF_TEST_MODE: ${PROXYHUB_NETWORK_PERF_TEST_MODE:-false}
     volumes:
       - xray-config:/etc/xray
       - xray-runtime:/var/run/proxyhub
@@ -159,6 +165,27 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+    networks: [proxyhub]
+    logging: *default-logging
+
+  network-perf-fixture:
+    image: node:24-alpine
+    profiles: [runtime-test]
+    command: ['node', '/fixture/network-performance-fixture.mjs']
+    volumes:
+      - ./scripts/docker/network-performance-fixture.mjs:/fixture/network-performance-fixture.mjs:ro
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
     networks: [proxyhub]
     logging: *default-logging
 

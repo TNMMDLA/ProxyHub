@@ -9,6 +9,10 @@
     reverse_proxy proxyhub-server:3000
   }
 
+  handle_path /network-perf-fixture/* {
+    reverse_proxy network-perf-fixture:8080
+  }
+
   handle {
     reverse_proxy proxyhub-web:80
   }

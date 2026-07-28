@@ -2,7 +2,7 @@ name: Release images and production runtime regression
 
 on:
   push:
-    branches: [v0.3.1-stabilization]
+    branches: [v0.3.1-stabilization, v0.4-network-performance]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -232,6 +232,10 @@ jobs:
           PROXYHUB_SERVER_IMAGE=$server
           PROXYHUB_AGENT_IMAGE=$agent
           PROXYHUB_XRAY_IMAGE=$xray
+          COMPOSE_PROFILES=runtime-test
+          PROXYHUB_NETWORK_PERF_TEST_MODE=true
+          PROXYHUB_NETWORK_PERF_TARGET_TIMEOUT_MS=5000
+          PROXYHUB_NETWORK_PERF_TARGETS_JSON=[{"id":"runtime-fixture","label":"Runtime Fixture","smallRequestUrl":"https://caddy/network-perf-fixture/small","downloadUrl":"https://caddy/network-perf-fixture/download","enabled":true,"maxDownloadBytes":524288}]
           EOF
           echo "COMPOSE_PROJECT_NAME=proxyhub-release-${GITHUB_RUN_ID}" >>"$GITHUB_ENV"
           echo "COMPOSE_FILE=$GITHUB_WORKSPACE/docker-compose.yml:$GITHUB_WORKSPACE/docker-compose.release.yml" >>"$GITHUB_ENV"

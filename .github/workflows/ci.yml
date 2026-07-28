@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master, v0.3.1-stabilization]
+    branches: [master, v0.3.1-stabilization, v0.4-network-performance]
   pull_request:
 
 permissions:
@@ -81,6 +81,11 @@ jobs:
       ENCRYPTION_KEY: ci-only-encryption-key-at-least-32-bytes
       AGENT_TOKEN: ci-only-agent-token-at-least-16-bytes
       PANEL_DOMAIN: localhost
+      COMPOSE_PROFILES: runtime-test
+      PROXYHUB_NETWORK_PERF_TEST_MODE: 'true'
+      PROXYHUB_NETWORK_PERF_TARGET_TIMEOUT_MS: '5000'
+      PROXYHUB_NETWORK_PERF_TARGETS_JSON: >-
+        [{"id":"runtime-fixture","label":"Runtime Fixture","smallRequestUrl":"https://caddy/network-perf-fixture/small","downloadUrl":"https://caddy/network-perf-fixture/download","enabled":true,"maxDownloadBytes":524288}]
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
@@ -101,7 +106,7 @@ jobs:
         run: bash scripts/docker/runtime-smoke.sh
       - name: Capture runtime logs
         if: always()
-        run: docker compose logs --no-color proxyhub-web proxyhub-server proxyhub-agent xray caddy
+        run: docker compose logs --no-color proxyhub-web proxyhub-server proxyhub-agent xray caddy network-perf-fixture
       - name: Stop runtime services
         if: always()
         run: docker compose down --volumes --remove-orphans

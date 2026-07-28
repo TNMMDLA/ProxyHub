@@ -2,6 +2,9 @@
 set -euo pipefail
 
 services=(xray proxyhub-agent proxyhub-server proxyhub-web caddy)
+if docker compose config --services | grep -qx 'network-perf-fixture'; then
+  services+=(network-perf-fixture)
+fi
 deadline=$((SECONDS + 150))
 
 while (( SECONDS < deadline )); do
@@ -64,18 +67,18 @@ mkdir -p \
   .proxyhub/state/diagnostics/runtime-fixture \
   backups
 cat >.proxyhub/state/releases/current.json <<'EOF'
-{"releaseId":"runtime-fixture","version":"0.3.1-dev","gitSha":"0000000000000000000000000000000000000000","deployMode":"source","deployedAt":"2026-01-01T00:00:00Z","transactionId":"runtime-fixture"}
+{"releaseId":"runtime-fixture","version":"0.4.0-dev","gitSha":"0000000000000000000000000000000000000000","deployMode":"source","deployedAt":"2026-01-01T00:00:00Z","transactionId":"runtime-fixture"}
 EOF
 cat >.proxyhub/state/transactions/runtime-fixture.json <<'EOF'
 {"transactionId":"runtime-fixture","operation":"deploy","currentStage":"HEALTH_VERIFIED","updatedAt":"2026-01-01T00:00:00Z"}
 EOF
 cat >.proxyhub/state/releases/manifests/runtime-fixture.json <<'EOF'
-{"schemaVersion":1,"releaseId":"runtime-fixture","version":"0.3.1-dev","gitSha":"0000000000000000000000000000000000000000"}
+{"schemaVersion":1,"releaseId":"runtime-fixture","version":"0.4.0-dev","gitSha":"0000000000000000000000000000000000000000"}
 EOF
 backup_fixture="$(mktemp -d)"
 trap 'rm -rf "$backup_fixture"' EXIT
 cat >"$backup_fixture/manifest.json" <<'EOF'
-{"schemaVersion":1,"application":{"name":"ProxyHub","version":"0.3.1-dev","gitSha":"0000000000000000000000000000000000000000","xrayVersion":"26.5.9"},"createdAt":"2026-01-01T00:00:00.000Z","database":{"filename":"database.sqlite","sizeBytes":7,"sha256":"1111111111111111111111111111111111111111111111111111111111111111","integrity":"ok","migrationFingerprint":"2222222222222222222222222222222222222222222222222222222222222222"},"encryptionKeyIncluded":false}
+{"schemaVersion":1,"application":{"name":"ProxyHub","version":"0.4.0-dev","gitSha":"0000000000000000000000000000000000000000","xrayVersion":"26.5.9"},"createdAt":"2026-01-01T00:00:00.000Z","database":{"filename":"database.sqlite","sizeBytes":7,"sha256":"1111111111111111111111111111111111111111111111111111111111111111","integrity":"ok","migrationFingerprint":"2222222222222222222222222222222222222222222222222222222222222222"},"encryptionKeyIncluded":false}
 EOF
 printf 'fixture' >"$backup_fixture/database.sqlite"
 tar -czf backups/proxyhub-backup-20260101T000000Z-000000000000.tar.gz \
@@ -161,29 +164,83 @@ if (/(privateKey|tokenHash|realityPrivateKeyEncrypted)/i.test(setupSerialized)) 
 }
 
 const { PrismaClient } = await import('@prisma/client');
+const { generateKeyPairSync, randomBytes, randomUUID } = await import('node:crypto');
+const { lookup } = await import('node:dns/promises');
 const prisma = new PrismaClient();
 const fixtureServer = await prisma.server.findFirst({ orderBy: { createdAt: 'asc' } });
 if (!fixtureServer) throw new Error('Phase 3 runtime smoke requires the seeded local server');
-const fixtureNode = await prisma.node.upsert({
-  where: { uuid: '00000000-0000-4000-8000-000000000031' },
-  update: { enabled: true, status: 'HEALTHY' },
-  create: {
-    serverId: fixtureServer.id,
-    name: 'Runtime Phase 3 Node',
-    host: 'edge.example.com',
-    port: 30443,
-    uuid: '00000000-0000-4000-8000-000000000031',
-    flow: 'xtls-rprx-vision',
-    realityPublicKey: 'runtime-public-material',
-    realityPrivateKeyEncrypted: 'runtime-encrypted-placeholder',
-    shortId: '0000000000000031',
-    sni: 'www.example.com',
-    dest: 'www.example.com:443',
-    fingerprint: 'chrome',
-    enabled: true,
-    status: 'HEALTHY',
-  },
+const caddyAddress = await lookup('caddy');
+const keyPair = generateKeyPairSync('x25519');
+const privateKey = keyPair.privateKey.export({ format: 'jwk' }).d;
+const publicKey = keyPair.publicKey.export({ format: 'jwk' }).x;
+if (!privateKey || !publicKey) throw new Error('Unable to create runtime Reality key pair');
+const runtimeCredentials = {
+  uuid: randomUUID(),
+  privateKey,
+  publicKey,
+  shortId: randomBytes(8).toString('hex'),
+};
+const nodeData = {
+  serverId: fixtureServer.id,
+  name: 'Runtime Phase 3 Node',
+  host: '127.0.0.1',
+  port: 30443,
+  uuid: runtimeCredentials.uuid,
+  flow: 'xtls-rprx-vision',
+  realityPublicKey: runtimeCredentials.publicKey,
+  realityPrivateKeyEncrypted: 'runtime-encrypted-placeholder',
+  shortId: runtimeCredentials.shortId,
+  sni: 'localhost',
+  dest: `${caddyAddress.address}:443`,
+  fingerprint: 'chrome',
+  enabled: true,
+  status: 'HEALTHY',
+};
+const existingFixtureNode = await prisma.node.findFirst({
+  where: { name: 'Runtime Phase 3 Node' },
 });
+const fixtureNode = existingFixtureNode
+  ? await prisma.node.update({ where: { id: existingFixtureNode.id }, data: nodeData })
+  : await prisma.node.create({ data: nodeData });
+const formalConfig = {
+  log: { loglevel: 'warning' },
+  inbounds: [
+    {
+      tag: 'runtime-network-performance-node',
+      listen: '0.0.0.0',
+      port: fixtureNode.port,
+      protocol: 'vless',
+      settings: {
+        clients: [{ id: runtimeCredentials.uuid, flow: 'xtls-rprx-vision' }],
+        decryption: 'none',
+      },
+      streamSettings: {
+        network: 'tcp',
+        security: 'reality',
+        realitySettings: {
+          show: false,
+          dest: `${caddyAddress.address}:443`,
+          xver: 0,
+          serverNames: ['localhost'],
+          privateKey: runtimeCredentials.privateKey,
+          shortIds: [runtimeCredentials.shortId],
+        },
+      },
+    },
+  ],
+  outbounds: [{ tag: 'direct', protocol: 'freedom' }],
+};
+const appliedFixture = await fetch('http://proxyhub-agent:3001/xray/apply', {
+  method: 'POST',
+  headers: {
+    authorization: `Bearer ${process.env.AGENT_TOKEN}`,
+    'content-type': 'application/json',
+  },
+  body: JSON.stringify({ config: formalConfig }),
+});
+if (!appliedFixture.ok) {
+  throw new Error(`Unable to apply isolated runtime fixture: ${appliedFixture.status}`);
+}
 await prisma.$disconnect();
 
 const listData = async (path) => {
@@ -315,6 +372,156 @@ if (
 ) {
   throw new Error(`Subscription response test failed: ${JSON.stringify(responseTestBody)}`);
 }
+const agentInternal = async (path, init = {}) => {
+  const response = await fetch(`http://proxyhub-agent:3001${path}`, {
+    ...init,
+    headers: {
+      authorization: `Bearer ${process.env.AGENT_TOKEN}`,
+      ...(init.headers ?? {}),
+    },
+  });
+  const body = await response.json();
+  if (!response.ok || !body?.success) {
+    throw new Error(`Agent ${path} failed: status=${response.status} code=${body?.error?.code}`);
+  }
+  return body.data;
+};
+const runtimeIdentityBefore = await agentInternal('/network-performance/runtime-identity');
+const performanceCapability = await authenticated('/api/nodes/performance-tests/capability');
+const performanceCapabilityBody = await performanceCapability.json();
+if (
+  !performanceCapability.ok ||
+  !performanceCapabilityBody?.success ||
+  performanceCapabilityBody.data?.available !== true ||
+  performanceCapabilityBody.data?.targetCount !== 1
+) {
+  throw new Error(`Performance capability failed: ${JSON.stringify(performanceCapabilityBody)}`);
+}
+const waitForPerformanceRun = async (runId, expectedStatuses, timeoutMs = 30_000) => {
+  const deadline = Date.now() + timeoutMs;
+  let body;
+  while (Date.now() < deadline) {
+    const response = await authenticated(
+      `/api/nodes/${fixtureNode.id}/performance-tests/${runId}`,
+    );
+    body = await response.json();
+    if (!response.ok || !body?.success) {
+      throw new Error(`Performance run query failed: ${JSON.stringify(body)}`);
+    }
+    if (expectedStatuses.includes(body.data?.status)) return body.data;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Performance run did not reach ${expectedStatuses.join('/')}: ${JSON.stringify(body)}`);
+};
+const startPerformanceRun = async () => {
+  const response = await jsonRequest(
+    `/api/nodes/${fixtureNode.id}/performance-tests`,
+    'POST',
+  );
+  const body = await response.json();
+  if (response.status !== 202 || !body?.success || !body.data?.id) {
+    throw new Error(`Starting performance run failed: ${JSON.stringify(body)}`);
+  }
+  return body.data;
+};
+const waitForPerformanceIdle = async () => {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const response = await authenticated('/api/nodes/performance-tests/capability');
+    const body = await response.json();
+    if (response.ok && body?.success && body.data?.busy === false) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('Performance runner did not become idle');
+};
+
+const performanceRun = await startPerformanceRun();
+const concurrentPerformance = await jsonRequest(
+  `/api/nodes/${fixtureNode.id}/performance-tests`,
+  'POST',
+);
+const concurrentPerformanceBody = await concurrentPerformance.json();
+if (
+  concurrentPerformance.status !== 409 ||
+  concurrentPerformanceBody?.error?.code !== 'NETWORK_PERFORMANCE_TEST_BUSY'
+) {
+  throw new Error('Concurrent performance run was not rejected with the stable busy code');
+}
+const performanceResult = await waitForPerformanceRun(
+  performanceRun.id,
+  ['COMPLETED', 'PARTIAL'],
+);
+if (
+  performanceResult.status !== 'COMPLETED' ||
+  performanceResult.targetResults?.length !== 1 ||
+  !(performanceResult.targetResults[0]?.directMbps > 0) ||
+  !(performanceResult.targetResults[0]?.tunnelMbps > 0)
+) {
+  throw new Error(`Performance result was incomplete: ${JSON.stringify(performanceResult)}`);
+}
+const serializedPerformance = JSON.stringify(performanceResult);
+for (const secret of [
+  fixtureNode.uuid,
+  fixtureNode.realityPublicKey,
+  fixtureNode.shortId,
+  'runtime-encrypted-placeholder',
+  process.env.AGENT_TOKEN,
+  process.env.ENCRYPTION_KEY,
+]) {
+  if (secret && serializedPerformance.includes(secret)) {
+    throw new Error('Performance API exposed a fixture secret');
+  }
+}
+const performanceHistory = await authenticated(
+  `/api/nodes/${fixtureNode.id}/performance-tests`,
+);
+const performanceHistoryBody = await performanceHistory.json();
+if (
+  !performanceHistory.ok ||
+  !performanceHistoryBody?.success ||
+  performanceHistoryBody.data?.[0]?.id !== performanceRun.id
+) {
+  throw new Error(`Performance history failed: ${JSON.stringify(performanceHistoryBody)}`);
+}
+
+await waitForPerformanceIdle();
+await fetch('http://network-perf-fixture:8080/mode/slow', { method: 'POST' });
+const cancellablePerformance = await startPerformanceRun();
+const cancelledResponse = await jsonRequest(
+  `/api/nodes/${fixtureNode.id}/performance-tests/${cancellablePerformance.id}/cancel`,
+  'POST',
+);
+if (!cancelledResponse.ok) {
+  throw new Error(`Performance cancellation failed: ${await cancelledResponse.text()}`);
+}
+await waitForPerformanceRun(cancellablePerformance.id, ['CANCELLED']);
+
+await waitForPerformanceIdle();
+const timeoutPerformance = await startPerformanceRun();
+const timeoutResult = await waitForPerformanceRun(timeoutPerformance.id, ['FAILED'], 30_000);
+if (timeoutResult.summary?.errorCode !== undefined) {
+  if (timeoutResult.summary.errorCode !== 'NETWORK_PERFORMANCE_TIMEOUT') {
+    throw new Error(`Unexpected performance timeout code: ${JSON.stringify(timeoutResult)}`);
+  }
+} else if (
+  timeoutResult.targetResults?.[0]?.errorCode !== 'NETWORK_PERFORMANCE_TIMEOUT'
+) {
+  throw new Error(`Target timeout was not preserved: ${JSON.stringify(timeoutResult)}`);
+}
+await fetch('http://network-perf-fixture:8080/mode/fast', { method: 'POST' });
+
+const runtimeIdentityAfter = await agentInternal('/network-performance/runtime-identity');
+if (
+  runtimeIdentityAfter.pid !== runtimeIdentityBefore.pid ||
+  runtimeIdentityAfter.configSha256 !== runtimeIdentityBefore.configSha256
+) {
+  throw new Error('Performance tests changed the active Xray PID or configuration');
+}
+const finalPerformanceCapability = await agentInternal('/network-performance/capability');
+if (finalPerformanceCapability.busy || finalPerformanceCapability.targetCount !== 1) {
+  throw new Error('Performance runner did not release its single-run lock');
+}
+console.log('Network performance runtime smoke passed with isolation, cancellation and timeout.');
+
 const dependencies = await authenticated(
   `/api/resources/policy/${fixturePolicy.id}/dependencies`,
 );
@@ -343,7 +550,12 @@ const overviewBody = await overview.json();
 if (!overview.ok || !overviewBody?.success || overviewBody.data?.kind !== 'overview') {
   throw new Error(`Diagnostics overview failed: ${JSON.stringify(overviewBody)}`);
 }
-for (const id of ['runtime.server.health', 'database.sqlite.health', 'storage.database.filesystem']) {
+for (const id of [
+  'runtime.server.health',
+  'database.sqlite.health',
+  'storage.database.filesystem',
+  'network-performance.summary',
+]) {
   if (!overviewBody.data.items.some((item) => item.id === id)) {
     throw new Error(`Diagnostics overview is missing ${id}`);
   }
@@ -397,6 +609,12 @@ if (
 console.log(`Diagnostics runtime smoke passed with ${overviewBody.data.items.length} overview items.`);
 EOF
 
+if docker compose exec -T proxyhub-agent sh -c \
+  "find /tmp -maxdepth 1 -type d -name 'proxyhub-network-performance-*' | grep -q ."; then
+  echo "Network performance temporary directories were not cleaned" >&2
+  exit 1
+fi
+
 for service in "${services[@]}"; do
   container_id="$(docker compose ps -q --all "$service")"
   log_driver="$(docker inspect --format '{{.HostConfig.LogConfig.Type}}' "$container_id")"
@@ -416,7 +634,7 @@ for service in "${services[@]}"; do
   state="$(docker inspect --format '{{.State.Status}}' "$container_id")"
   restart_count="$(docker inspect --format '{{.RestartCount}}' "$container_id")"
   if [[ "$state" != "running" || "$restart_count" != "0" ]]; then
-    echo "$service changed state during Reality compatibility smoke: state=$state restarts=$restart_count" >&2
+    echo "$service changed state during runtime smoke: state=$state restarts=$restart_count" >&2
     exit 1
   fi
 done

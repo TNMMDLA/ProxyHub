@@ -11,6 +11,7 @@ COPY release/version.json release/version.json
 COPY scripts/release/generate-version.mjs scripts/release/generate-version.mjs
 COPY apps/server/package.json apps/server/package.json
 COPY packages/diagnostics-core/package.json packages/diagnostics-core/package.json
+COPY packages/network-performance-core/package.json packages/network-performance-core/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/xray-manager/package.json packages/xray-manager/package.json
 COPY packages/policy-core/package.json packages/policy-core/package.json
@@ -18,6 +19,7 @@ COPY packages/rule-set-core/package.json packages/rule-set-core/package.json
 RUN pnpm install --filter @proxyhub/server... --frozen-lockfile
 COPY apps/server apps/server
 COPY packages/diagnostics-core packages/diagnostics-core
+COPY packages/network-performance-core packages/network-performance-core
 COPY packages/shared packages/shared
 COPY packages/xray-manager packages/xray-manager
 COPY packages/policy-core packages/policy-core
