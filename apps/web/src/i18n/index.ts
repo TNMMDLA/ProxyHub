@@ -22,6 +22,8 @@ import enDiagnostics from './locales/en/diagnostics.json';
 import zhDiagnostics from './locales/zh-CN/diagnostics.json';
 import enSecurity from './locales/en/security.json';
 import zhSecurity from './locales/zh-CN/security.json';
+import enNetworkPerformance from './locales/en/networkPerformance.json';
+import zhNetworkPerformance from './locales/zh-CN/networkPerformance.json';
 
 export const supportedLocales = ['en', 'zh-CN'] as const;
 export type SupportedLocale = (typeof supportedLocales)[number];
@@ -73,6 +75,7 @@ export const resources = {
     resources: enResources,
     diagnostics: enDiagnostics,
     security: enSecurity,
+    networkPerformance: enNetworkPerformance,
   },
   'zh-CN': {
     common: zhCommon,
@@ -86,6 +89,7 @@ export const resources = {
     resources: zhResources,
     diagnostics: zhDiagnostics,
     security: zhSecurity,
+    networkPerformance: zhNetworkPerformance,
   },
 } as const;
 

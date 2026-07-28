@@ -307,6 +307,9 @@ export default function DiagnosticsPage() {
         <Link to="/subscriptions">
           {t('navigation:subscriptions')} <ExternalLink size={13} />
         </Link>
+        <Link to="/nodes?performance=1">
+          {t('diagnostics:networkPerformance')} <ExternalLink size={13} />
+        </Link>
       </section>
       <p className="diagnostics-boundary">{t('diagnostics:boundary')}</p>
     </div>

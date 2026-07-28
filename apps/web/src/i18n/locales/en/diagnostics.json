@@ -28,7 +28,8 @@
   "empty": "No checks are available for this section.",
   "dedicatedTools": "Dedicated tools",
   "realityCompatibility": "Reality Compatibility",
-  "boundary": "Diagnostics are read-only. They never restart services, apply configuration, deploy, roll back, restore backups, fetch remote rule sets, or run Reality compatibility tests.",
+  "networkPerformance": "Go to Node Performance Test",
+  "boundary": "Diagnostics are read-only. They never restart services, apply configuration, deploy, roll back, restore backups, fetch remote rule sets, run Reality compatibility tests, or start network performance tests.",
   "tabs": {
     "overview": "Overview",
     "runtime": "Runtime",

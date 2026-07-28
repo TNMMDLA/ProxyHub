@@ -28,7 +28,8 @@
   "empty": "此分类暂无可用检查。",
   "dedicatedTools": "专用工具",
   "realityCompatibility": "Reality 兼容性",
-  "boundary": "诊断功能为只读，不会重启服务、应用配置、部署、回滚、恢复备份、拉取远程规则集或运行 Reality 兼容性测试。",
+  "networkPerformance": "前往节点线路性能测试",
+  "boundary": "诊断功能为只读，不会重启服务、应用配置、部署、回滚、恢复备份、拉取远程规则集、运行 Reality 兼容性测试或启动线路性能测试。",
   "tabs": {
     "overview": "概览",
     "runtime": "运行环境",

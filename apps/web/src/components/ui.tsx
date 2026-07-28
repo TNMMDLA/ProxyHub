@@ -70,7 +70,13 @@ export function Modal({
   description,
   onClose,
   children,
-}: PropsWithChildren<{ title: string; description?: string; onClose: () => void }>) {
+  className = '',
+}: PropsWithChildren<{
+  title: string;
+  description?: string;
+  onClose: () => void;
+  className?: string;
+}>) {
   const { t } = useTranslation('common');
   return (
     <div
@@ -80,7 +86,12 @@ export function Modal({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <section
+        className={`modal ${className}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+      >
         <header>
           <div>
             <h2 id="modal-title">{title}</h2>

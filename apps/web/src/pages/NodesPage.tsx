@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Copy,
   CopyPlus,
+  Gauge,
   Pencil,
   Plus,
   Power,
@@ -34,9 +35,10 @@ import {
 } from './reality-compatibility-state';
 import { useTranslation } from 'react-i18next';
 import { confirmDeleteWithImpact } from '../delete-impact';
+import { NetworkPerformancePanel } from './NetworkPerformancePanel';
 
 export default function NodesPage() {
-  const { t } = useTranslation(['resources', 'common']);
+  const { t } = useTranslation(['resources', 'common', 'networkPerformance']);
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(params.get('create') === '1');
@@ -44,6 +46,7 @@ export default function NodesPage() {
   const [form, setForm] = useState(initialForm);
   const [createCompatibility, setCreateCompatibility] = useState<CompatibilityView>(null);
   const [editCompatibility, setEditCompatibility] = useState<CompatibilityView>(null);
+  const [performanceNode, setPerformanceNode] = useState<NodeRecord | null>(null);
   const [editing, setEditing] = useState<
     Pick<NodeRecord, 'id' | 'name' | 'host' | 'port' | 'sni' | 'dest' | 'fingerprint'> | undefined
   >();
@@ -219,6 +222,13 @@ export default function NodesPage() {
                     <td>{node.pools.length}</td>
                     <td>
                       <div className="row-actions">
+                        <button
+                          title={t('networkPerformance:action')}
+                          disabled={!node.enabled}
+                          onClick={() => setPerformanceNode(node)}
+                        >
+                          <Gauge size={16} />
+                        </button>
                         <button
                           title={t('resources:nodes.share')}
                           onClick={() => void openShare(node.id)}
@@ -508,6 +518,9 @@ export default function NodesPage() {
             </div>
           </form>
         </Modal>
+      ) : null}
+      {performanceNode ? (
+        <NetworkPerformancePanel node={performanceNode} onClose={() => setPerformanceNode(null)} />
       ) : null}
     </>
   );
