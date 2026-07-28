@@ -443,6 +443,7 @@ function requestOnce(
                     // SOCKS framing deliberately leaves the raw socket paused so
                     // no tunneled bytes can be consumed before TLS owns it. Node
                     // 24 does not resume this async createConnection path.
+                    socket.resume();
                     tlsSocket.resume();
                   })
                   .catch((error: Error) => callback(error, undefined as unknown as Duplex));
