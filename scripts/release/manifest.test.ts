@@ -3,9 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  compareReleaseVersions,
   createReleaseManifest,
   migrationFingerprint,
+  nextPatchDevelopmentVersion,
   parseArguments,
+  previousCoreVersion,
   readReleaseVersion,
   validateReleaseManifest,
 } from './manifest-lib.mjs';
@@ -13,6 +16,34 @@ import {
 const gitSha = '1234567890abcdef1234567890abcdef12345678';
 
 describe('release version and manifest', () => {
+  it.each([
+    ['0.4.0-dev', '0.4.1-dev'],
+    ['0.4.0', '0.4.1-dev'],
+    ['0.4.0-rc.1', '0.4.1-dev'],
+    ['1.2.9-dev', '1.2.10-dev'],
+  ])('derives an upgrade fixture above %s', (current, expected) => {
+    const target = nextPatchDevelopmentVersion(current);
+    expect(target).toBe(expected);
+    expect(compareReleaseVersions(target, current)).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['0.4.0-dev', '0.3.0'],
+    ['0.4.1', '0.4.0'],
+    ['1.0.0-rc.1', '0.0.0'],
+  ])('derives a downgrade fixture below %s', (current, expected) => {
+    const target = previousCoreVersion(current);
+    expect(target).toBe(expected);
+    expect(compareReleaseVersions(target, current)).toBeLessThan(0);
+  });
+
+  it('rejects invalid or non-incrementable fixture versions with clear errors', () => {
+    expect(() => nextPatchDevelopmentVersion('not-a-version')).toThrow(
+      'Invalid release semantic version',
+    );
+    expect(() => previousCoreVersion('0.0.0-dev')).toThrow('no lower core version');
+  });
+
   it('loads the canonical development version', async () => {
     await expect(readReleaseVersion()).resolves.toMatchObject({
       version: '0.4.0-dev',

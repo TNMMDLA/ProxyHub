@@ -4,6 +4,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
+import semver from 'semver';
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const versionPath = resolve(root, 'release/version.json');
@@ -12,6 +13,37 @@ const migrationsPath = resolve(root, 'apps/server/prisma/migrations');
 
 export async function readReleaseVersion() {
   return JSON.parse(await readFile(versionPath, 'utf8'));
+}
+
+function parseReleaseSemver(version) {
+  if (
+    typeof version !== 'string' ||
+    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:[-+]|$)/u.test(version)
+  ) {
+    throw new Error(`Invalid release semantic version: ${String(version)}`);
+  }
+  const parsed = semver.parse(version);
+  if (!parsed) throw new Error(`Invalid release semantic version: ${version}`);
+  return parsed;
+}
+
+export function compareReleaseVersions(left, right) {
+  return semver.compare(parseReleaseSemver(left), parseReleaseSemver(right));
+}
+
+export function nextPatchDevelopmentVersion(version) {
+  const parsed = parseReleaseSemver(version);
+  if (parsed.patch >= Number.MAX_SAFE_INTEGER)
+    throw new Error(`Release patch version cannot be incremented safely: ${version}`);
+  return `${parsed.major}.${parsed.minor}.${parsed.patch + 1}-dev`;
+}
+
+export function previousCoreVersion(version) {
+  const parsed = parseReleaseSemver(version);
+  if (parsed.patch > 0) return `${parsed.major}.${parsed.minor}.${parsed.patch - 1}`;
+  if (parsed.minor > 0) return `${parsed.major}.${parsed.minor - 1}.0`;
+  if (parsed.major > 0) return `${parsed.major - 1}.0.0`;
+  throw new Error(`Release version has no lower core version for a downgrade fixture: ${version}`);
 }
 
 export async function migrationFingerprint(directory = migrationsPath) {

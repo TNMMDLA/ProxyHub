@@ -31,6 +31,12 @@ export function readReleaseVersion(): Promise<{
   manifestSchemaVersion: number;
 }>;
 
+export function compareReleaseVersions(left: string, right: string): number;
+
+export function nextPatchDevelopmentVersion(version: string): string;
+
+export function previousCoreVersion(version: string): string;
+
 export function migrationFingerprint(directory?: string): Promise<string>;
 
 export function validateReleaseManifest(

@@ -282,28 +282,54 @@ jobs:
           scripts/ops/backup.sh prune --count 1 --days 30 --dry-run --json |
             jq -e '.success and .dryRun'
 
-          jq '
-            .version="0.3.2-dev" |
+          current_version="$(jq -r '.version' release/version.json)"
+          upgrade_version="$(node scripts/release/fixture-version.mjs upgrade)"
+          downgrade_version="$(node scripts/release/fixture-version.mjs downgrade)"
+          node --input-type=module -e \
+            "import semver from 'semver'; if (!semver.gt(process.argv[1], process.argv[2])) throw new Error('Upgrade fixture must be greater than the current version')" \
+            "$upgrade_version" \
+            "$current_version"
+          node --input-type=module -e \
+            "import semver from 'semver'; if (!semver.lt(process.argv[1], process.argv[2])) throw new Error('Downgrade fixture must be lower than the current version')" \
+            "$downgrade_version" \
+            "$current_version"
+          jq --arg version "$upgrade_version" '
+            .version=$version |
             .gitSha=("3"*40) |
             .gitShortSha=("3"*12) |
-            .releaseId=("0.3.2-dev-" + ("3"*12) + "-fixture")
+            .releaseId=($version + "-" + ("3"*12) + "-fixture")
           ' "$manifest" >.tmp/update-manifest.json
           pnpm release:manifest:validate -- --manifest .tmp/update-manifest.json --mode release
           scripts/ops/deploy.sh --manifest "$manifest" --dry-run --yes
           scripts/ops/update.sh --manifest .tmp/update-manifest.json --dry-run --yes
 
-          jq '
-            .version="0.3.0" |
+          jq --arg version "$downgrade_version" '
+            .version=$version |
             .gitSha=("0"*40) |
             .gitShortSha=("0"*12) |
-            .releaseId=("0.3.0-" + ("0"*12) + "-fixture")
-          ' "$manifest" >.tmp/previous-manifest.json
+            .releaseId=($version + "-" + ("0"*12) + "-fixture")
+          ' "$manifest" >.tmp/downgrade-manifest.json
+          pnpm release:manifest:validate -- --manifest .tmp/downgrade-manifest.json --mode release
+          if downgrade_output="$(
+            scripts/ops/update.sh --manifest .tmp/downgrade-manifest.json --dry-run --yes 2>&1
+          )"; then
+            echo "Expected downgrade protection to reject the fixture" >&2
+            exit 1
+          fi
+          grep -Fq 'OPS_DOWNGRADE_BLOCKED' <<<"$downgrade_output"
+          scripts/ops/update.sh \
+            --manifest .tmp/downgrade-manifest.json \
+            --dry-run \
+            --yes \
+            --allow-downgrade
+
+          cp .tmp/downgrade-manifest.json .tmp/previous-manifest.json
           previous_id="$(jq -r '.releaseId' .tmp/previous-manifest.json)"
           previous_manifest="$PROXYHUB_STATE_DIR/releases/manifests/$previous_id.json"
           cp .tmp/previous-manifest.json "$previous_manifest"
           jq \
             --arg releaseId "$previous_id" \
-            --arg version "0.3.0" \
+            --arg version "$downgrade_version" \
             --arg manifestPath "$previous_manifest" \
             '.releaseId=$releaseId | .version=$version | .manifestPath=$manifestPath' \
             "$PROXYHUB_STATE_DIR/releases/current.json" \
