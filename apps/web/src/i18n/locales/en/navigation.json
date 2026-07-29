@@ -12,6 +12,7 @@
   "diagnostics": "Diagnostics",
   "security": "Security",
   "notifications": "Notifications",
+  "users": "Users",
   "auditLogs": "Audit Logs",
   "settings": "Settings",
   "searchPlaceholder": "Search or jump to…",

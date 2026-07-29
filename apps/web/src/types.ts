@@ -24,6 +24,8 @@ export interface NodeRecord {
   id: string;
   serverId: string;
   name: string;
+  protocol: string;
+  transport: string;
   host: string;
   port: number;
   uuid: string;
@@ -39,6 +41,83 @@ export interface NodeRecord {
   createdAt: string;
   server: { name: string; status: string };
   pools: Array<{ nodePool: PoolRecord }>;
+}
+
+export type EffectiveUserStatus = 'ACTIVE' | 'DISABLED' | 'EXPIRED' | 'TRAFFIC_EXHAUSTED';
+
+export interface UserTrafficRecord {
+  currentCycleUplinkBytes: string;
+  currentCycleDownlinkBytes: string;
+  currentCycleTotalBytes: string;
+  lifetimeUplinkBytes: string;
+  lifetimeDownlinkBytes: string;
+  lifetimeTotalBytes: string;
+  cycleStartedAt: string | null;
+  cycleEndsAt: string | null;
+  lastTrafficAt: string | null;
+}
+
+export interface UserAccessRecord {
+  id: string;
+  enabled: boolean;
+  statsIdentity: string;
+  createdAt: string;
+  updatedAt: string;
+  node: {
+    id: string;
+    name: string;
+    protocol: string;
+    transport: string;
+    enabled: boolean;
+    status: string;
+    server: { id: string; name: string };
+  };
+  traffic: UserTrafficRecord;
+}
+
+export interface UserRecord {
+  id: string;
+  name: string;
+  remark: string;
+  groupId: string | null;
+  group: UserGroupRecord | null;
+  adminEnabled: boolean;
+  expiresAt: string | null;
+  resetPolicy: 'NEVER' | 'MONTHLY';
+  resetDay: number | null;
+  status: EffectiveUserStatus;
+  trafficLimitBytes: string | null;
+  remainingBytes: string | null;
+  lastTrafficAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  credential: { id: string; createdAt: string; rotatedAt: string | null } | null;
+  traffic: UserTrafficRecord;
+  accesses: UserAccessRecord[];
+}
+
+export interface UserGroupRecord {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { users: number };
+}
+
+export interface UserListRecord {
+  items: UserRecord[];
+  page: number;
+  limit: number;
+  total: number;
+}
+
+export interface NodeUserRecord {
+  id: string;
+  enabled: boolean;
+  status: EffectiveUserStatus;
+  user: { id: string; name: string; lastTrafficAt: string | null };
+  traffic: UserTrafficRecord;
 }
 export interface PoolRecord {
   id: string;

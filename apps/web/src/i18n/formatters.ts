@@ -47,6 +47,25 @@ export function formatFileSize(bytes: number, locale: SupportedLocale): string {
   return `${new Intl.NumberFormat(locale, { maximumFractionDigits: unit === 0 ? 0 : 1 }).format(value)} ${units[unit]}`;
 }
 
+export function formatBytes(bytes: bigint | string, locale: SupportedLocale): string {
+  const value = typeof bytes === 'bigint' ? bytes : BigInt(bytes);
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'] as const;
+  let divisor = 1n;
+  let unit = 0;
+  while (value >= divisor * 1024n && unit < units.length - 1) {
+    divisor *= 1024n;
+    unit += 1;
+  }
+  const whole = value / divisor;
+  const remainder = value % divisor;
+  const tenths = divisor === 1n ? 0 : Number((remainder * 10n) / divisor);
+  const formatter = new Intl.NumberFormat(locale);
+  const integer = formatter.format(whole);
+  const decimal =
+    formatter.formatToParts(1.1).find((part) => part.type === 'decimal')?.value ?? '.';
+  return `${tenths === 0 ? integer : `${integer}${decimal}${String(tenths)}`} ${units[unit]}`;
+}
+
 export function formatDuration(milliseconds: number, locale: SupportedLocale): string {
   if (milliseconds < 1000) return `${formatNumber(milliseconds, locale)} ms`;
   const seconds = milliseconds / 1000;

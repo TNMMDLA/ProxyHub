@@ -18,6 +18,7 @@ const SubscriptionsPage = lazy(() => import('./pages/SubscriptionsPage'));
 const RuleSetsPage = lazy(() => import('./pages/RuleSetsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
 
 function ScreenLoader() {
   return (
@@ -104,6 +105,14 @@ export function App() {
           element={
             <Suspense fallback={<ScreenLoader />}>
               <DiagnosticsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <Suspense fallback={<ScreenLoader />}>
+              <UsersPage />
             </Suspense>
           }
         />

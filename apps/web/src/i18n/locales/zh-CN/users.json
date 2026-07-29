@@ -1,0 +1,97 @@
+{
+  "title": "用户",
+  "description": "管理凭据、节点访问、流量配额、有效期和真实 Xray 流量。",
+  "create": "创建用户",
+  "noGroup": "未分组",
+  "unlimited": "不限流量",
+  "noActivity": "尚无流量",
+  "pagination": "第 {{page}} / {{pages}} 页",
+  "summary": {
+    "total": "用户总数",
+    "active": "本页活跃",
+    "exhausted": "流量已用尽",
+    "cycleTraffic": "当前周期流量"
+  },
+  "filters": {
+    "search": "搜索",
+    "searchPlaceholder": "名称或备注",
+    "status": "状态",
+    "allStatuses": "全部状态",
+    "group": "分组",
+    "allGroups": "全部分组"
+  },
+  "columns": {
+    "user": "用户",
+    "status": "状态",
+    "traffic": "当前流量",
+    "quota": "配额",
+    "nodes": "节点",
+    "lastActivity": "最近活动"
+  },
+  "empty": {
+    "title": "尚未创建用户",
+    "body": "创建第一个用户，并授权一个或多个受支持节点。"
+  },
+  "form": {
+    "createTitle": "创建用户",
+    "editTitle": "编辑用户",
+    "description": "系统会自动生成并加密保存私有 VLESS 凭据。",
+    "name": "名称",
+    "remark": "备注",
+    "group": "分组",
+    "quotaGiB": "流量配额（GiB，留空表示不限）",
+    "expiresAt": "到期时间",
+    "resetPolicy": "流量重置",
+    "never": "不自动重置",
+    "monthly": "每月",
+    "resetDay": "每月重置日（1–28）",
+    "initialNodes": "初始节点访问"
+  },
+  "details": {
+    "title": "用户详情",
+    "description": "查看流量并同步该用户的节点访问。",
+    "status": "有效状态",
+    "currentTraffic": "当前周期",
+    "lifetimeTraffic": "累计流量",
+    "remaining": "剩余流量"
+  },
+  "actions": {
+    "details": "查看用户详情",
+    "enable": "启用用户",
+    "disable": "停用用户",
+    "resetTraffic": "重置当前流量",
+    "rotate": "轮换凭据",
+    "copyLink": "复制节点分享链接",
+    "revoke": "撤销节点访问",
+    "confirmDelete": "删除该用户并撤销所有节点访问吗？"
+  },
+  "access": {
+    "title": "节点访问",
+    "description": "每项访问使用独立且不含敏感信息的统计标识。",
+    "addNodes": "添加节点",
+    "grant": "授予访问"
+  },
+  "groups": {
+    "manage": "管理分组",
+    "title": "用户分组",
+    "description": "分组仅用于整理用户，不继承套餐或权限。",
+    "name": "分组名称",
+    "groupDescription": "说明",
+    "create": "创建分组",
+    "noDescription": "无说明",
+    "userCount": "{{count}} 个用户"
+  },
+  "messages": {
+    "created": "用户已创建并同步",
+    "updated": "用户已更新并同步",
+    "groupCreated": "用户分组已创建",
+    "groupUpdated": "用户分组已更新"
+  },
+  "nodeUsers": {
+    "action": "查看授权用户",
+    "title": "{{node}} 的用户",
+    "description": "该节点的授权用户与当前周期流量。",
+    "emptyTitle": "暂无授权用户",
+    "emptyBody": "请从用户页面为该节点授予访问。"
+  }
+}

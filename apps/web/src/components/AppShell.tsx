@@ -20,6 +20,7 @@ import {
   ListTree,
   Stethoscope,
   X,
+  Users,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import type { AgentStatusData, ProxyHubHealthData } from '@proxyhub/shared';
@@ -49,7 +50,13 @@ const groups = [
       { to: '/subscriptions', key: 'subscriptions', icon: Link2 },
     ],
   },
-  { key: 'access', items: [{ to: '/notifications', key: 'notifications', icon: Bell }] },
+  {
+    key: 'access',
+    items: [
+      { to: '/users', key: 'users', icon: Users },
+      { to: '/notifications', key: 'notifications', icon: Bell },
+    ],
+  },
   {
     key: 'system',
     items: [

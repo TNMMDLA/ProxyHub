@@ -8,6 +8,7 @@ import i18n, {
 } from './index';
 import {
   formatDateTime,
+  formatBytes,
   formatDuration,
   formatFileSize,
   formatNumber,
@@ -112,5 +113,7 @@ describe('web localization foundation', () => {
     expect(formatPercent(0.5, 'zh-CN')).toContain('50');
     expect(formatFileSize(1024 * 1024, 'en')).toBe('1 MB');
     expect(formatDuration(1500, 'en')).toBe('1.5 s');
+    expect(formatBytes('1125899906842624', 'en')).toBe('1 PB');
+    expect(formatBytes(1536n, 'en')).toBe('1.5 KB');
   });
 });

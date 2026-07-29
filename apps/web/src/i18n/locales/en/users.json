@@ -1,0 +1,97 @@
+{
+  "title": "Users",
+  "description": "Manage credentials, node access, quotas, expiration and real Xray traffic.",
+  "create": "Create user",
+  "noGroup": "No group",
+  "unlimited": "Unlimited",
+  "noActivity": "No traffic yet",
+  "pagination": "Page {{page}} of {{pages}}",
+  "summary": {
+    "total": "Total users",
+    "active": "Active on this page",
+    "exhausted": "Quota exhausted",
+    "cycleTraffic": "Current-cycle traffic"
+  },
+  "filters": {
+    "search": "Search",
+    "searchPlaceholder": "Name or remark",
+    "status": "Status",
+    "allStatuses": "All statuses",
+    "group": "Group",
+    "allGroups": "All groups"
+  },
+  "columns": {
+    "user": "User",
+    "status": "Status",
+    "traffic": "Current traffic",
+    "quota": "Quota",
+    "nodes": "Nodes",
+    "lastActivity": "Last activity"
+  },
+  "empty": {
+    "title": "No users have been created",
+    "body": "Create the first user and grant access to one or more supported nodes."
+  },
+  "form": {
+    "createTitle": "Create user",
+    "editTitle": "Edit user",
+    "description": "A private VLESS credential is generated and encrypted automatically.",
+    "name": "Name",
+    "remark": "Remark",
+    "group": "Group",
+    "quotaGiB": "Traffic quota (GiB, blank for unlimited)",
+    "expiresAt": "Expires at",
+    "resetPolicy": "Traffic reset",
+    "never": "Never reset automatically",
+    "monthly": "Monthly",
+    "resetDay": "Monthly reset day (1–28)",
+    "initialNodes": "Initial node access"
+  },
+  "details": {
+    "title": "User details",
+    "description": "Review traffic and synchronize this user's node access.",
+    "status": "Effective status",
+    "currentTraffic": "Current cycle",
+    "lifetimeTraffic": "Lifetime",
+    "remaining": "Remaining"
+  },
+  "actions": {
+    "details": "View user details",
+    "enable": "Enable user",
+    "disable": "Disable user",
+    "resetTraffic": "Reset current traffic",
+    "rotate": "Rotate credential",
+    "copyLink": "Copy node share link",
+    "revoke": "Revoke node access",
+    "confirmDelete": "Delete this user and revoke all node access?"
+  },
+  "access": {
+    "title": "Node access",
+    "description": "Each access has an independent non-sensitive stats identity.",
+    "addNodes": "Add nodes",
+    "grant": "Grant access"
+  },
+  "groups": {
+    "manage": "Manage groups",
+    "title": "User groups",
+    "description": "Groups organize users and do not inherit plans or permissions.",
+    "name": "Group name",
+    "groupDescription": "Description",
+    "create": "Create group",
+    "noDescription": "No description",
+    "userCount": "{{count}} users"
+  },
+  "messages": {
+    "created": "User created and synchronized",
+    "updated": "User updated and synchronized",
+    "groupCreated": "User group created",
+    "groupUpdated": "User group updated"
+  },
+  "nodeUsers": {
+    "action": "View authorized users",
+    "title": "{{node}} users",
+    "description": "Authorized users and current-cycle traffic on this node.",
+    "emptyTitle": "No authorized users",
+    "emptyBody": "Grant this node from the Users page."
+  }
+}

@@ -12,6 +12,7 @@ import {
   RadioTower,
   ShieldCheck,
   Trash2,
+  Users,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -26,7 +27,8 @@ import {
   QueryErrorState,
   Status,
 } from '../components/ui';
-import type { NodeRecord, ServerRecord } from '../types';
+import type { NodeRecord, NodeUserRecord, ServerRecord } from '../types';
+import { formatBytes } from '../i18n/formatters';
 import { RealityCompatibilityPanel } from './RealityCompatibilityPanel';
 import {
   clearCompatibilityOnRealityChange,
@@ -38,7 +40,7 @@ import { confirmDeleteWithImpact } from '../delete-impact';
 import { NetworkPerformancePanel } from './NetworkPerformancePanel';
 
 export default function NodesPage() {
-  const { t } = useTranslation(['resources', 'common', 'networkPerformance']);
+  const { t, i18n } = useTranslation(['resources', 'common', 'networkPerformance', 'users']);
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(params.get('create') === '1');
@@ -47,6 +49,7 @@ export default function NodesPage() {
   const [createCompatibility, setCreateCompatibility] = useState<CompatibilityView>(null);
   const [editCompatibility, setEditCompatibility] = useState<CompatibilityView>(null);
   const [performanceNode, setPerformanceNode] = useState<NodeRecord | null>(null);
+  const [usersNode, setUsersNode] = useState<NodeRecord | null>(null);
   const [editing, setEditing] = useState<
     Pick<NodeRecord, 'id' | 'name' | 'host' | 'port' | 'sni' | 'dest' | 'fingerprint'> | undefined
   >();
@@ -54,6 +57,11 @@ export default function NodesPage() {
   const servers = useQuery({
     queryKey: ['servers'],
     queryFn: () => api<ServerRecord[]>('/servers'),
+  });
+  const nodeUsers = useQuery({
+    queryKey: ['node-users', usersNode?.id],
+    queryFn: () => api<NodeUserRecord[]>(`/nodes/${usersNode?.id}/users`),
+    enabled: usersNode !== null,
   });
   const openCreate = () => {
     const server = servers.data?.[0];
@@ -222,6 +230,12 @@ export default function NodesPage() {
                     <td>{node.pools.length}</td>
                     <td>
                       <div className="row-actions">
+                        <button
+                          title={t('users:nodeUsers.action')}
+                          onClick={() => setUsersNode(node)}
+                        >
+                          <Users size={16} />
+                        </button>
                         <button
                           title={t('networkPerformance:action')}
                           disabled={!node.enabled}
@@ -400,6 +414,40 @@ export default function NodesPage() {
               </Button>
             </div>
           </form>
+        </Modal>
+      ) : null}
+      {usersNode ? (
+        <Modal
+          title={t('users:nodeUsers.title', { node: usersNode.name })}
+          description={t('users:nodeUsers.description')}
+          onClose={() => setUsersNode(null)}
+        >
+          {nodeUsers.isError ? (
+            <QueryErrorState error={nodeUsers.error} onRetry={() => void nodeUsers.refetch()} />
+          ) : nodeUsers.data?.length ? (
+            <div className="node-user-list">
+              {nodeUsers.data.map((record) => (
+                <article key={record.id}>
+                  <div>
+                    <b>{record.user.name}</b>
+                    <small>
+                      {formatBytes(
+                        record.traffic.currentCycleTotalBytes,
+                        i18n.language === 'zh-CN' ? 'zh-CN' : 'en',
+                      )}
+                    </small>
+                  </div>
+                  <Status value={record.enabled ? record.status : 'DISABLED'} />
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<Users />}
+              title={t('users:nodeUsers.emptyTitle')}
+              body={t('users:nodeUsers.emptyBody')}
+            />
+          )}
         </Modal>
       ) : null}
       {share ? (
