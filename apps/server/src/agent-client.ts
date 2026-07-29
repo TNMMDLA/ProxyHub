@@ -17,6 +17,10 @@ interface AgentEnvelope<T> {
   error?: { code?: string; message?: string };
 }
 
+type AgentRequestInit = Omit<RequestInit, 'body'> & {
+  body?: unknown;
+};
+
 export interface AgentApplyResult {
   applied: true;
   restarted: true;
@@ -82,18 +86,21 @@ export interface AgentClient {
   confirm(revision: string): Promise<{ confirmed: true }>;
 }
 
-async function agentRequest<T>(
+export async function agentRequest<T>(
   path: string,
-  init: RequestInit = {},
+  init: AgentRequestInit = {},
   timeoutMs = 5_000,
 ): Promise<T> {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   try {
     const signal = init.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
+    const { body: requestBody, ...requestInit } = init;
+    const hasBody = requestBody !== undefined;
     const response = await fetch(new URL(path, config.AGENT_URL), {
-      ...init,
+      ...requestInit,
+      ...(hasBody ? { body: JSON.stringify(requestBody) } : {}),
       headers: {
-        'content-type': 'application/json',
+        ...(hasBody ? { 'content-type': 'application/json' } : {}),
         authorization: `Bearer ${config.AGENT_TOKEN}`,
         ...init.headers,
       },
@@ -151,16 +158,12 @@ export const defaultAgentClient: AgentClient = {
   testRealityTarget: (input, signal) =>
     agentRequest<RealityTargetCompatibilityResult>(
       '/xray/reality-compatibility',
-      { method: 'POST', body: JSON.stringify(input), ...(signal ? { signal } : {}) },
+      { method: 'POST', body: input, ...(signal ? { signal } : {}) },
       30_000,
     ),
   networkPerformanceCapability: () => agentRequest('/network-performance/capability'),
   startNetworkPerformance: (input) =>
-    agentRequest(
-      '/network-performance/runs',
-      { method: 'POST', body: JSON.stringify(input) },
-      10_000,
-    ),
+    agentRequest('/network-performance/runs', { method: 'POST', body: input }, 10_000),
   getNetworkPerformance: (id) =>
     agentRequest(`/network-performance/runs/${encodeURIComponent(id)}`),
   cancelNetworkPerformance: (id) =>
@@ -172,15 +175,15 @@ export const defaultAgentClient: AgentClient = {
   applyConfig: (xrayConfig) =>
     agentRequest<AgentApplyResult>(
       '/xray/apply',
-      { method: 'POST', body: JSON.stringify({ config: xrayConfig }) },
+      { method: 'POST', body: { config: xrayConfig } },
       30_000,
     ),
   restart: () => agentRequest('/xray/restart', { method: 'POST' }, 30_000),
   rollback: (revision) =>
-    agentRequest('/xray/rollback', { method: 'POST', body: JSON.stringify({ revision }) }, 30_000),
+    agentRequest('/xray/rollback', { method: 'POST', body: { revision } }, 30_000),
   confirm: (revision) =>
     agentRequest('/xray/confirm', {
       method: 'POST',
-      body: JSON.stringify({ revision }),
+      body: { revision },
     }),
 };
