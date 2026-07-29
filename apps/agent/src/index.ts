@@ -24,6 +24,7 @@ import {
 import { collectAgentDiagnostics } from './diagnostics.js';
 import { NetworkPerformanceError, NetworkPerformanceRunner } from './network-performance/runner.js';
 import { cleanupStalePerformanceDirectories } from './network-performance/network-runtime.js';
+import { fetchXrayUserStats } from './traffic-stats.js';
 
 const env = parseAgentConfig(process.env);
 
@@ -116,6 +117,11 @@ app.get('/diagnostics', async (request) => {
     data: await collectAgentDiagnostics(env, realityCompatibility, { deep: query.deep === 'true' }),
   };
 });
+
+app.get('/xray/user-stats', async () => ({
+  success: true,
+  data: await fetchXrayUserStats(env.XRAY_METRICS_URL),
+}));
 
 app.post('/xray/validate', async (request) => {
   const body = z.object({ config: z.record(z.string(), z.unknown()) }).parse(request.body);

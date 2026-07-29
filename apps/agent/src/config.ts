@@ -23,6 +23,7 @@ const envSchema = z
     XRAY_PID_PATH: z.string().default('/var/run/proxyhub/xray.pid'),
     XRAY_HEARTBEAT_PATH: z.string().default('/var/run/proxyhub/xray.heartbeat'),
     XRAY_PROBE_HOST: z.string().default('127.0.0.1'),
+    XRAY_METRICS_URL: z.string().url().default('http://host.docker.internal:11111/debug/vars'),
     XRAY_HEALTH_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(12_000),
     REALITY_COMPATIBILITY_TIMEOUT_MS: z.coerce
       .number()
@@ -47,6 +48,23 @@ const envSchema = z
     PROXYHUB_NETWORK_PERF_TEST_MODE: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
+    const metricsUrl = new URL(environment.XRAY_METRICS_URL);
+    if (
+      metricsUrl.protocol !== 'http:' ||
+      !['127.0.0.1', 'localhost', 'host.docker.internal'].includes(metricsUrl.hostname) ||
+      metricsUrl.port !== '11111' ||
+      metricsUrl.pathname !== '/debug/vars' ||
+      metricsUrl.search !== '' ||
+      metricsUrl.hash !== '' ||
+      metricsUrl.username !== '' ||
+      metricsUrl.password !== ''
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['XRAY_METRICS_URL'],
+        message: 'XRAY_METRICS_URL must use the internal Xray HTTP metrics endpoint',
+      });
+    }
     if (
       environment.NODE_ENV === 'production' &&
       (environment.AGENT_TOKEN === DEVELOPMENT_AGENT_TOKEN ||

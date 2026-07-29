@@ -47,18 +47,38 @@ export interface RealityNodeConfig {
   sni: string;
   dest: string;
   fingerprint: string;
+  clients?: RealityUserClient[];
+}
+
+export interface RealityUserClient {
+  uuid: string;
+  statsIdentity: string;
 }
 
 export function buildRealityInbound(node: RealityNodeConfig): Record<string, unknown> {
   if (node.port < 1 || node.port > 65535) throw new Error('Invalid port');
   if (!node.sni || !node.dest || !node.uuid || !node.privateKey)
     throw new Error('Missing Reality field');
+  const clients = [
+    { id: node.uuid, flow: 'xtls-rprx-vision' },
+    ...(node.clients ?? []).map((client) => ({
+      id: client.uuid,
+      flow: 'xtls-rprx-vision',
+      email: client.statsIdentity,
+      level: 0,
+    })),
+  ];
+  const identifiers = new Set<string>();
+  for (const client of clients) {
+    if (identifiers.has(client.id)) throw new Error('Duplicate VLESS client UUID');
+    identifiers.add(client.id);
+  }
   return {
     tag: `proxyhub-${node.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`,
     listen: '0.0.0.0',
     port: node.port,
     protocol: 'vless',
-    settings: { clients: [{ id: node.uuid, flow: 'xtls-rprx-vision' }], decryption: 'none' },
+    settings: { clients, decryption: 'none' },
     streamSettings: {
       network: 'tcp',
       security: 'reality',
@@ -75,7 +95,11 @@ export function buildRealityInbound(node: RealityNodeConfig): Record<string, unk
   };
 }
 
-export function buildXrayConfig(nodes: RealityNodeConfig[]): Record<string, unknown> {
+export function buildXrayConfig(
+  nodes: RealityNodeConfig[],
+  options: { metricsListen?: string } = {},
+): Record<string, unknown> {
+  const hasUserStats = nodes.some((node) => (node.clients?.length ?? 0) > 0);
   return {
     log: { loglevel: 'warning' },
     inbounds: nodes.map(buildRealityInbound),
@@ -83,6 +107,22 @@ export function buildXrayConfig(nodes: RealityNodeConfig[]): Record<string, unkn
       { tag: 'direct', protocol: 'freedom' },
       { tag: 'blocked', protocol: 'blackhole' },
     ],
+    ...(hasUserStats
+      ? {
+          stats: {},
+          policy: {
+            levels: {
+              '0': {
+                statsUserUplink: true,
+                statsUserDownlink: true,
+              },
+            },
+          },
+          metrics: {
+            listen: options.metricsListen ?? 'host.docker.internal:11111',
+          },
+        }
+      : {}),
   };
 }
 

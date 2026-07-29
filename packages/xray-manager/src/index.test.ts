@@ -34,6 +34,76 @@ describe('xray-manager', () => {
       },
     ]);
     expect(config.inbounds).toHaveLength(1);
+    expect(config).not.toHaveProperty('stats');
+  });
+
+  it('preserves the legacy client and enables user stats for multiple clients', () => {
+    const config = buildXrayConfig([
+      {
+        name: 'Hong Kong',
+        port: 443,
+        uuid: '11111111-1111-4111-8111-111111111111',
+        privateKey: 'key',
+        shortId: '12',
+        sni: 'example.com',
+        dest: 'example.com:443',
+        fingerprint: 'chrome',
+        clients: [
+          {
+            uuid: '22222222-2222-4222-8222-222222222222',
+            statsIdentity: 'phu-user-a-access-hk',
+          },
+          {
+            uuid: '33333333-3333-4333-8333-333333333333',
+            statsIdentity: 'phu-user-b-access-hk',
+          },
+        ],
+      },
+    ]);
+    const inbound = (config.inbounds as Array<{ settings: { clients: unknown[] } }>)[0]!;
+    expect(inbound.settings.clients).toEqual([
+      { id: '11111111-1111-4111-8111-111111111111', flow: 'xtls-rprx-vision' },
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        flow: 'xtls-rprx-vision',
+        email: 'phu-user-a-access-hk',
+        level: 0,
+      },
+      {
+        id: '33333333-3333-4333-8333-333333333333',
+        flow: 'xtls-rprx-vision',
+        email: 'phu-user-b-access-hk',
+        level: 0,
+      },
+    ]);
+    expect(config).toMatchObject({
+      stats: {},
+      policy: { levels: { '0': { statsUserUplink: true, statsUserDownlink: true } } },
+      metrics: { listen: 'host.docker.internal:11111' },
+    });
+  });
+
+  it('rejects duplicate legacy and managed client UUIDs', () => {
+    expect(() =>
+      buildXrayConfig([
+        {
+          name: 'Duplicate',
+          port: 443,
+          uuid: '11111111-1111-4111-8111-111111111111',
+          privateKey: 'key',
+          shortId: '12',
+          sni: 'example.com',
+          dest: 'example.com:443',
+          fingerprint: 'chrome',
+          clients: [
+            {
+              uuid: '11111111-1111-4111-8111-111111111111',
+              statsIdentity: 'phu-duplicate',
+            },
+          ],
+        },
+      ]),
+    ).toThrow('Duplicate VLESS client UUID');
   });
 
   it('creates a VLESS URI without leaking the private key', () => {

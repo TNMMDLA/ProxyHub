@@ -14,4 +14,17 @@ describe('agent configuration', () => {
       }),
     ).toThrow(/unique production secret/);
   });
+
+  it('restricts Xray metrics to the exact internal endpoint', () => {
+    expect(() =>
+      parseAgentConfig({
+        XRAY_METRICS_URL: 'http://host.docker.internal:11111/debug/vars?target=secret',
+      }),
+    ).toThrow(/internal Xray HTTP metrics endpoint/);
+    expect(
+      parseAgentConfig({
+        XRAY_METRICS_URL: 'http://127.0.0.1:11111/debug/vars',
+      }).XRAY_METRICS_URL,
+    ).toBe('http://127.0.0.1:11111/debug/vars');
+  });
 });
