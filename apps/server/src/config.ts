@@ -59,6 +59,12 @@ const envSchema = z
       .min(30_000)
       .max(300_000)
       .default(120_000),
+    PROXYHUB_TRAFFIC_ACCOUNTING_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(10_000)
+      .max(300_000)
+      .default(30_000),
   })
   .superRefine((environment, context) => {
     if (environment.NODE_ENV !== 'production') return;

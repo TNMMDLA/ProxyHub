@@ -4,9 +4,16 @@ import { config } from './config.js';
 import { prisma } from './db.js';
 import { startRuleSetScheduler } from './rule-set/scheduler.js';
 import { PROXYHUB_RELEASE } from '@proxyhub/shared';
+import { defaultAgentClient } from './agent-client.js';
+import { TrafficAccountingService } from './traffic/accounting.js';
+import { startTrafficAccountingScheduler } from './traffic/scheduler.js';
 
 const app = await buildApp();
 const stopRuleSetScheduler = startRuleSetScheduler();
+const stopTrafficAccountingScheduler = startTrafficAccountingScheduler(
+  new TrafficAccountingService(prisma, defaultAgentClient),
+  config.PROXYHUB_TRAFFIC_ACCOUNTING_INTERVAL_MS,
+);
 
 await prisma.server.upsert({
   where: { id: 'local-controller' },
@@ -24,6 +31,7 @@ await prisma.server.upsert({
 
 const close = async () => {
   stopRuleSetScheduler();
+  stopTrafficAccountingScheduler();
   await app.close();
   await prisma.$disconnect();
   process.exit(0);

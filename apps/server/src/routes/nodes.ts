@@ -9,7 +9,6 @@ import {
 } from '@proxyhub/shared';
 import {
   buildRealityInbound,
-  buildXrayConfig,
   createVlessUri,
   generateRealityCredentials,
 } from '@proxyhub/xray-manager';
@@ -20,6 +19,7 @@ import { prisma } from '../db.js';
 import { AppError } from '../errors.js';
 import { assertDeleteAllowed } from '../resource-dependencies.js';
 import { decryptSecret, encryptSecret } from '../security/crypto.js';
+import { buildDesiredXrayConfig } from '../users/reconciler.js';
 
 const nodeSelect = {
   id: true,
@@ -173,22 +173,7 @@ async function requireCompatibleRealityTarget(
 }
 
 async function enabledXrayConfig(transaction: Prisma.TransactionClient) {
-  const nodes = await transaction.node.findMany({
-    where: { enabled: true },
-    orderBy: [{ serverId: 'asc' }, { port: 'asc' }],
-  });
-  return buildXrayConfig(
-    nodes.map((node) => ({
-      name: node.name,
-      port: node.port,
-      uuid: node.uuid,
-      privateKey: decryptSecret(node.realityPrivateKeyEncrypted),
-      shortId: node.shortId,
-      sni: node.sni,
-      dest: node.dest,
-      fingerprint: node.fingerprint,
-    })),
-  );
+  return buildDesiredXrayConfig(transaction);
 }
 
 interface NodeMutationOptions<T extends LifecycleRecord> {
@@ -497,6 +482,7 @@ export const nodeRoutes: FastifyPluginAsync<{ agentClient: AgentClient }> = asyn
       mutate: async (transaction) => {
         const current = await transaction.node.findUnique({ where: { id } });
         if (!current) throw new AppError('NODE_NOT_FOUND', 'Node not found', 404);
+        await transaction.userAccess.deleteMany({ where: { nodeId: id } });
         await transaction.node.delete({ where: { id } });
         return { id: current.id, name: current.name };
       },

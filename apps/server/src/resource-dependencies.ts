@@ -120,6 +120,10 @@ export async function getResourceDependencies(
             },
           },
         },
+        userAccesses: {
+          where: { revokedAt: null, user: { deletedAt: null } },
+          select: { user: { select: { id: true, name: true } } },
+        },
       },
     });
     if (!node) throw new AppError('NODE_NOT_FOUND', 'Node not found', 404);
@@ -135,6 +139,9 @@ export async function getResourceDependencies(
           reference('POLICY', rule.policy.id, rule.policy.name, 'NODE_POOL_USED_BY_POLICY', false),
         );
       }
+    }
+    for (const access of node.userAccesses) {
+      usedBy.push(reference('USER', access.user.id, access.user.name, 'NODE_AUTHORIZED_TO_USER'));
     }
     return bounded(resourceType, resourceId, usedBy);
   }
@@ -197,6 +204,27 @@ export async function getResourceDependencies(
     );
   }
 
+  if (resourceType === 'USER') {
+    const user = await prisma.user.findFirst({
+      where: { id: resourceId, deletedAt: null },
+      select: {
+        id: true,
+        accesses: {
+          where: { revokedAt: null },
+          select: { node: { select: { id: true, name: true } } },
+        },
+      },
+    });
+    if (!user) throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+    return bounded(
+      resourceType,
+      resourceId,
+      user.accesses.map(({ node }) =>
+        reference('NODE', node.id, node.name, 'NODE_AUTHORIZED_TO_USER'),
+      ),
+    );
+  }
+
   const subscription = await prisma.subscription.findUnique({
     where: { id: resourceId },
     select: { id: true },
@@ -231,6 +259,17 @@ export async function getDeleteImpact(
         resourceType: 'NODE_POOL',
         resourceId: nodePool.id,
         name: nodePool.name,
+      });
+    }
+    for (const item of dependencies.usedBy.filter(
+      (dependency) => dependency.relation === 'NODE_AUTHORIZED_TO_USER',
+    )) {
+      impacts.push({
+        code: 'NODE_HAS_USER_ACCESS',
+        severity: 'BLOCKING',
+        resourceType: item.resourceType,
+        resourceId: item.resourceId,
+        name: item.name,
       });
     }
   } else if (resourceType === 'SERVER') {

@@ -24,6 +24,8 @@ import { invalidateReadiness } from './subscription-readiness.js';
 import { invalidateSetupProgress } from './setup-progress.js';
 import { NetworkPerformanceService } from './network-performance/service.js';
 import { networkPerformanceRoutes } from './routes/network-performance.js';
+import { nodeUserRoutes, userGroupRoutes, userRoutes } from './routes/users.js';
+import { UserService } from './users/service.js';
 
 export function redactRequestUrl(url: string | undefined): string | undefined {
   return url?.replace(/(\/sub\/)[^/?#]+/g, '$1[REDACTED]');
@@ -36,6 +38,7 @@ export async function buildApp(options: { agentClient?: AgentClient; logFile?: s
     agentClient,
     config.PROXYHUB_NETWORK_PERF_TIMEOUT_MS + 30_000,
   );
+  const users = new UserService(agentClient);
   await networkPerformance.initialize();
   const app = Fastify({
     logger: {
@@ -118,11 +121,14 @@ export async function buildApp(options: { agentClient?: AgentClient; logFile?: s
   }));
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(nodeRoutes, { prefix: '/api/nodes', agentClient });
+  await app.register(nodeUserRoutes, { prefix: '/api/nodes', service: users });
   await app.register(networkPerformanceRoutes, {
     prefix: '/api/nodes',
     service: networkPerformance,
   });
   await app.register(poolRoutes, { prefix: '/api/node-pools' });
+  await app.register(userRoutes, { prefix: '/api/users', service: users });
+  await app.register(userGroupRoutes, { prefix: '/api/user-groups' });
   await app.register(policyRoutes, { prefix: '/api/policies' });
   await app.register(ruleSetRoutes, { prefix: '/api/rule-sets' });
   await app.register(subscriptionRoutes, { prefix: '/api/subscriptions' });

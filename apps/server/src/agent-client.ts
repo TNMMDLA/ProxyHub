@@ -27,6 +27,9 @@ export interface AgentApplyResult {
 export interface AgentClient {
   status(): Promise<AgentStatusData>;
   diagnostics?(deep?: boolean, signal?: AbortSignal): Promise<DiagnosticsReport>;
+  userStats?(): Promise<
+    Array<{ statsIdentity: string; uplinkBytes: string; downlinkBytes: string }>
+  >;
   testRealityTarget(
     input: {
       serverName: string;
@@ -144,6 +147,7 @@ export const defaultAgentClient: AgentClient = {
       signal ? { signal } : {},
       deep ? 20_000 : 5_000,
     ),
+  userStats: () => agentRequest('/xray/user-stats', {}, 10_000),
   testRealityTarget: (input, signal) =>
     agentRequest<RealityTargetCompatibilityResult>(
       '/xray/reality-compatibility',

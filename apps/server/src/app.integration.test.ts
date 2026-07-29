@@ -29,6 +29,7 @@ let applyCalls = 0;
 let compatibilityCalls = 0;
 let nextCompatibilityStatus: RealityTargetCompatibilityResult['status'] = 'COMPATIBLE';
 const appliedInboundCounts: number[] = [];
+const appliedClientCounts: number[] = [];
 let holdPerformanceRun = false;
 const performanceAgentRuns = new Map<string, { status: string; cancelled?: boolean }>();
 const performanceResult: NetworkPerformanceResult = {
@@ -191,7 +192,16 @@ const agentClient: AgentClient = {
   },
   applyConfig: async (config) => {
     applyCalls += 1;
-    appliedInboundCounts.push(Array.isArray(config.inbounds) ? config.inbounds.length : -1);
+    const inbounds = Array.isArray(config.inbounds) ? (config.inbounds as unknown[]) : null;
+    appliedInboundCounts.push(inbounds?.length ?? -1);
+    appliedClientCounts.push(
+      inbounds
+        ? inbounds.reduce<number>((total, inbound) => {
+            const settings = (inbound as { settings?: { clients?: unknown[] } }).settings;
+            return total + (Array.isArray(settings?.clients) ? settings.clients.length : 0);
+          }, 0)
+        : -1,
+    );
     if (rejectNextApply) {
       rejectNextApply = false;
       throw new Error('Synthetic validation failure');
@@ -349,6 +359,161 @@ describe('ProxyHub foundation API', () => {
     });
     expect(deleted.statusCode, deleted.body).toBe(200);
     expect(applyCalls).toBeGreaterThanOrEqual(6);
+  });
+
+  it('manages users, groups, node access, credentials and rollback without leaking secrets', async () => {
+    const unauthenticated = await app.inject({ method: 'GET', url: '/api/users' });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const groupResponse = await app.inject({
+      method: 'POST',
+      url: '/api/user-groups',
+      headers: { cookie },
+      payload: { name: 'Integration users', description: 'API regression group' },
+    });
+    expect(groupResponse.statusCode, groupResponse.body).toBe(201);
+    const groupId = groupResponse.json().data.id as string;
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/users',
+      headers: { cookie },
+      payload: {
+        name: 'Alice Integration',
+        remark: 'Primary test account',
+        groupId,
+        trafficLimitBytes: '1073741824',
+        resetPolicy: 'MONTHLY',
+        resetDay: 1,
+        nodeIds: [nodeId],
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const user = created.json().data;
+    const userId = user.id as string;
+    const accessId = user.accesses[0].id as string;
+    expect(user.status).toBe('ACTIVE');
+    expect(user.trafficLimitBytes).toBe('1073741824');
+    expect(JSON.stringify(user)).not.toContain('encryptedClientId');
+    const storedCredential = await prisma.userCredential.findUniqueOrThrow({
+      where: { userId },
+    });
+    expect(JSON.stringify(user)).not.toContain(storedCredential.encryptedClientId);
+    expect(appliedClientCounts.at(-1)).toBe(2);
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/api/users?page=1&limit=10&search=Alice&status=ACTIVE',
+      headers: { cookie },
+    });
+    expect(listed.statusCode, listed.body).toBe(200);
+    expect(listed.json().data.items).toHaveLength(1);
+
+    const nodeUsers = await app.inject({
+      method: 'GET',
+      url: `/api/nodes/${nodeId}/users`,
+      headers: { cookie },
+    });
+    expect(nodeUsers.statusCode, nodeUsers.body).toBe(200);
+    expect(nodeUsers.json().data[0].user.name).toBe('Alice Integration');
+
+    const blockedNodeDelete = await app.inject({
+      method: 'DELETE',
+      url: `/api/nodes/${nodeId}`,
+      headers: { cookie },
+    });
+    expect(blockedNodeDelete.statusCode, blockedNodeDelete.body).toBe(409);
+    expect(blockedNodeDelete.json().error.code).toBe('DELETE_BLOCKED_BY_DEPENDENCY');
+
+    const firstLink = await app.inject({
+      method: 'POST',
+      url: `/api/users/${userId}/access/${accessId}/share-link`,
+      headers: { cookie },
+    });
+    expect(firstLink.statusCode, firstLink.body).toBe(200);
+    expect(firstLink.headers['cache-control']).toBe('no-store');
+    expect(firstLink.json().data.uri).toContain('vless://');
+
+    const rotated = await app.inject({
+      method: 'POST',
+      url: `/api/users/${userId}/credential/rotate`,
+      headers: { cookie },
+    });
+    expect(rotated.statusCode, rotated.body).toBe(200);
+    const secondLink = await app.inject({
+      method: 'POST',
+      url: `/api/users/${userId}/access/${accessId}/share-link`,
+      headers: { cookie },
+    });
+    expect(secondLink.json().data.uri).not.toBe(firstLink.json().data.uri);
+
+    const disabledAccess = await app.inject({
+      method: 'POST',
+      url: `/api/users/${userId}/access/${accessId}/disable`,
+      headers: { cookie },
+    });
+    expect(disabledAccess.statusCode, disabledAccess.body).toBe(200);
+    expect(appliedClientCounts.at(-1)).toBe(1);
+    const enabledAccess = await app.inject({
+      method: 'POST',
+      url: `/api/users/${userId}/access/${accessId}/enable`,
+      headers: { cookie },
+    });
+    expect(enabledAccess.statusCode, enabledAccess.body).toBe(200);
+
+    rejectNextApply = true;
+    const rejectedDisable = await app.inject({
+      method: 'POST',
+      url: `/api/users/${userId}/disable`,
+      headers: { cookie },
+    });
+    expect(rejectedDisable.statusCode, rejectedDisable.body).toBe(503);
+    const afterRollback = await app.inject({
+      method: 'GET',
+      url: `/api/users/${userId}`,
+      headers: { cookie },
+    });
+    expect(afterRollback.json().data.status).toBe('ACTIVE');
+
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `/api/user-groups/${groupId}`,
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/users/${userId}`,
+      headers: { cookie },
+    });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/users/${userId}`,
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `/api/user-groups/${groupId}`,
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const audits = await prisma.auditLog.findMany({
+      where: { resourceId: { in: [userId, accessId] } },
+    });
+    expect(JSON.stringify(audits)).not.toContain('vless://');
+    expect(JSON.stringify(audits)).not.toContain('encryptedClientId');
   });
 
   it('runs, persists, retains and cancels sanitized network performance tests', async () => {
