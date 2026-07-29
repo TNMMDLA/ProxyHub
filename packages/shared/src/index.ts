@@ -75,6 +75,7 @@ export const resourceTypeSchema = z.enum([
   'POLICY',
   'RULE_SET',
   'SUBSCRIPTION',
+  'USER',
 ]);
 export const policyMatchSourceSchema = z.enum(['INLINE', 'RULE_SET']);
 export const ruleSetSourceTypeSchema = z.enum(['MANUAL', 'REMOTE']);
@@ -229,7 +230,8 @@ export type DependencyRelationCode =
   | 'NODE_IN_NODE_POOL'
   | 'NODE_POOL_USED_BY_POLICY'
   | 'RULE_SET_USED_BY_POLICY'
-  | 'POLICY_USED_BY_SUBSCRIPTION';
+  | 'POLICY_USED_BY_SUBSCRIPTION'
+  | 'NODE_AUTHORIZED_TO_USER';
 
 export interface ResourceReference {
   resourceType: ResourceType;

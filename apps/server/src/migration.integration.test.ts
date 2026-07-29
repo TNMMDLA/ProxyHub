@@ -69,12 +69,19 @@ describe('Prisma migration compatibility', () => {
         'RuleSetCache',
         'NetworkPerformanceRun',
         'NetworkPerformanceTargetResult',
+        'User',
+        'UserGroup',
+        'UserCredential',
+        'UserAccess',
+        'UserTrafficUsage',
+        'UserAccessTrafficUsage',
+        'UserTrafficRuntimeCounter',
       ]) {
         expect(tables).toContain(table);
       }
       expect(
         database.prepare('SELECT COUNT(*) AS count FROM _prisma_migrations').get(),
-      ).toMatchObject({ count: 4 });
+      ).toMatchObject({ count: 5 });
       expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally {
       database.close();
@@ -299,9 +306,23 @@ describe('Prisma migration compatibility', () => {
       expect(upgraded.prepare('SELECT name FROM Node').get()).toMatchObject({
         name: 'V0.3.1 Node',
       });
+      expect(upgraded.prepare('SELECT uuid FROM Node').get()).toMatchObject({
+        uuid: '31313131-3131-4131-8131-313131313131',
+      });
       expect(upgraded.prepare('SELECT name FROM RuleSet').get()).toMatchObject({
         name: 'V0.3.1 Rules',
       });
+      expect(tableNames(upgraded)).toEqual(
+        expect.arrayContaining([
+          'User',
+          'UserGroup',
+          'UserCredential',
+          'UserAccess',
+          'UserTrafficUsage',
+          'UserAccessTrafficUsage',
+          'UserTrafficRuntimeCounter',
+        ]),
+      );
       upgraded.exec(`
         INSERT INTO "NetworkPerformanceRun" (
           "id", "nodeId", "status", "proxyhubVersion", "buildSha"

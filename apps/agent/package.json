@@ -13,6 +13,7 @@
     "@proxyhub/diagnostics-core": "workspace:*",
     "@proxyhub/network-performance-core": "workspace:*",
     "@proxyhub/shared": "workspace:*",
+    "@proxyhub/users-core": "workspace:*",
     "@proxyhub/xray-manager": "workspace:*",
     "fastify": "^5.0.0",
     "zod": "^4.0.0"

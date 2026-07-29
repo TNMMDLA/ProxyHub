@@ -25,6 +25,7 @@
     "@proxyhub/policy-core": "workspace:*",
     "@proxyhub/rule-set-core": "workspace:*",
     "@proxyhub/shared": "workspace:*",
+    "@proxyhub/users-core": "workspace:*",
     "@proxyhub/xray-manager": "workspace:*",
     "argon2": "^0.44.0",
     "fastify": "^5.0.0",

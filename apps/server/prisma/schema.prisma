@@ -130,9 +130,105 @@ model Node {
   updatedAt                   DateTime         @updatedAt
   pools                       NodePoolMember[]
   performanceRuns             NetworkPerformanceRun[]
+  userAccesses                UserAccess[]
 
   @@unique([serverId, port])
   @@index([status, enabled])
+}
+
+model UserGroup {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+}
+
+model User {
+  id                String            @id @default(cuid())
+  name              String
+  remark            String            @default("")
+  groupId           String?
+  group             UserGroup?        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  adminEnabled      Boolean           @default(true)
+  expiresAt         DateTime?
+  trafficLimitBytes BigInt?
+  resetPolicy       String            @default("NEVER")
+  resetDay          Int?
+  lifecycleStatus   String            @default("ACTIVE")
+  deletedAt         DateTime?
+  lastTrafficAt     DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  credential        UserCredential?
+  accesses          UserAccess[]
+  trafficUsage      UserTrafficUsage?
+
+  @@index([groupId])
+  @@index([adminEnabled, expiresAt])
+  @@index([deletedAt, createdAt])
+}
+
+model UserCredential {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  encryptedClientId String
+  createdAt         DateTime @default(now())
+  rotatedAt         DateTime?
+}
+
+model UserAccess {
+  id            String                  @id @default(cuid())
+  userId        String
+  user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodeId        String
+  node          Node                    @relation(fields: [nodeId], references: [id], onDelete: Restrict)
+  enabled       Boolean                 @default(true)
+  revokedAt     DateTime?
+  statsIdentity String                  @unique
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  trafficUsage  UserAccessTrafficUsage?
+  runtimeCounter UserTrafficRuntimeCounter?
+
+  @@unique([userId, nodeId])
+  @@index([nodeId, enabled])
+  @@index([userId, enabled])
+  @@index([revokedAt])
+}
+
+model UserTrafficUsage {
+  userId                  String   @id
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentCycleUplinkBytes BigInt   @default(0)
+  currentCycleDownlinkBytes BigInt @default(0)
+  lifetimeUplinkBytes     BigInt   @default(0)
+  lifetimeDownlinkBytes   BigInt   @default(0)
+  cycleStartedAt          DateTime @default(now())
+  cycleEndsAt             DateTime?
+  updatedAt               DateTime @updatedAt
+}
+
+model UserAccessTrafficUsage {
+  userAccessId            String     @id
+  userAccess              UserAccess @relation(fields: [userAccessId], references: [id], onDelete: Cascade)
+  currentCycleUplinkBytes BigInt     @default(0)
+  currentCycleDownlinkBytes BigInt   @default(0)
+  lifetimeUplinkBytes     BigInt     @default(0)
+  lifetimeDownlinkBytes   BigInt     @default(0)
+  lastTrafficAt           DateTime?
+  updatedAt               DateTime   @updatedAt
+}
+
+model UserTrafficRuntimeCounter {
+  userAccessId      String     @id
+  userAccess        UserAccess @relation(fields: [userAccessId], references: [id], onDelete: Cascade)
+  uplinkBytes       BigInt     @default(0)
+  downlinkBytes     BigInt     @default(0)
+  observedAt        DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 }
 
 model NetworkPerformanceRun {
