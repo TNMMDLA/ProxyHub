@@ -267,6 +267,22 @@ const appliedFixture = await fetch('http://proxyhub-agent:3001/xray/apply', {
 if (!appliedFixture.ok) {
   throw new Error(`Unable to apply isolated runtime fixture: ${appliedFixture.status}`);
 }
+const appliedFixtureBody = await appliedFixture.json();
+const appliedFixtureRevision = appliedFixtureBody?.data?.revision;
+if (!appliedFixtureBody?.success || typeof appliedFixtureRevision !== 'string') {
+  throw new Error(`Runtime fixture apply omitted its revision: ${JSON.stringify(appliedFixtureBody)}`);
+}
+const confirmedFixture = await fetch('http://proxyhub-agent:3001/xray/confirm', {
+  method: 'POST',
+  headers: {
+    authorization: `Bearer ${process.env.AGENT_TOKEN}`,
+    'content-type': 'application/json',
+  },
+  body: JSON.stringify({ revision: appliedFixtureRevision }),
+});
+if (!confirmedFixture.ok) {
+  throw new Error(`Unable to confirm isolated runtime fixture: ${confirmedFixture.status}`);
+}
 await prisma.$disconnect();
 
 const listData = async (path) => {

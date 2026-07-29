@@ -14,6 +14,7 @@ import { parseAgentConfig } from './config.js';
 import { inspectXrayHealth, waitForHealthyXray } from './xray-health.js';
 import {
   applyXrayConfigLifecycle,
+  cleanupXrayRollbackArtifact,
   XrayLifecycleError,
   xrayRollbackPath,
 } from './xray-lifecycle.js';
@@ -272,15 +273,17 @@ app.post('/xray/rollback', async (request) => {
     const backupPath = xrayRollbackPath(env.XRAY_CONFIG_PATH, revision);
     await restoreValidatedConfig(env.XRAY_BINARY, env.XRAY_CONFIG_PATH, backupPath);
     const health = await restartXrayAndWait();
-    await rm(backupPath, { force: true });
+    await cleanupXrayRollbackArtifact(env.XRAY_CONFIG_PATH, revision);
     return { success: true, data: { rolledBack: true, health } };
   });
 });
 
 app.post('/xray/confirm', async (request) => {
   const { revision } = revisionSchema.parse(request.body);
-  await rm(xrayRollbackPath(env.XRAY_CONFIG_PATH, revision), { force: true });
-  return { success: true, data: { confirmed: true } };
+  return withXrayLock(async () => {
+    await cleanupXrayRollbackArtifact(env.XRAY_CONFIG_PATH, revision);
+    return { success: true, data: { confirmed: true } };
+  });
 });
 
 app.setErrorHandler((error, request, reply) => {
