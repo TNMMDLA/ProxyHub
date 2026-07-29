@@ -1,23 +1,24 @@
 # ProxyHub
 
-ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.4 Phase 1 adds an on-demand, server-side Network Performance Test to the V0.3.1 release, diagnostics, guided setup, subscription delivery, and localized Web foundation.
+ProxyHub is a modern, open-source proxy infrastructure management platform for Linux VPS hosts. V0.4 adds an on-demand server-side Network Performance Test and a user, node-access, quota, expiration, and Xray traffic-accounting foundation to the V0.3.1 release.
 
 ![ProxyHub dashboard design](docs/design/proxyhub-dashboard-concept.png)
 
-> Status: **V0.4 Phase 1 development — Development / Pre-production**.
+> Status: **V0.4 Phase 2 development — Development / Pre-production**.
 >
 > - Phase 1 — Release and Operations Foundation: **Code and CI Complete; VPS Deployment Pending**.
 > - Phase 2 — Diagnostics Center and Runtime Observability: **Code and CI Complete; VPS Deployment Pending**.
 > - Phase 3 — Guided Workflow, Subscription Readiness, Client Delivery, and Localization: **Code and CI Complete; VPS Deployment Pending; Real Client Import Verification Pending**.
 > - Reality Target Compatibility Hotfix: **Code and CI Verified; VPS Verification Pending**.
 > - V0.4 Phase 1 — Network Performance Test: **Development validation in progress; VPS Deployment Pending**.
+> - V0.4 Phase 2 — Users, Access & Traffic Management: **Local development validation in progress; Docker/VPS Runtime Verification Pending**.
 
 ### V0.1.1 implementation notes
 
 - The local controller, authenticated local Agent, administrator security flows, Reality node and node-pool APIs, notifications, and audit logs are implemented.
 - Node create, edit, clone, enable, disable, and delete rebuild the complete enabled-node configuration and commit only after Agent validation, atomic apply, restart acknowledgement, and health checks succeed.
 - Node pools support create, read, edit, delete, enable, disable, and batch membership replacement in the API and web console.
-- The dashboard labels its chart as Demo Data and explicitly reports that traffic collection is not configured. Traffic accounting remains separate roadmap work.
+- The legacy dashboard chart remains explicitly labeled as Demo Data. Real per-user uplink/downlink accounting is shown only in the Users interface and is collected from Xray metrics.
 - Xray health combines process, companion-container heartbeat, configured-port listening, and live config validation checks into `HEALTHY`, `DEGRADED`, `OFFLINE`, or `UNKNOWN`.
 - Remote Agent enrollment and remote server creation are not part of V0.1; the Servers page reports the seeded local controller and local Agent.
 
@@ -34,6 +35,9 @@ ProxyHub is a modern, open-source proxy infrastructure management platform for L
 - AES-256-GCM encryption for Reality private keys and TOTP secrets
 - Xray configuration test, temporary-file cleanup, revision backup, atomic apply, acknowledged restart, health check, and rollback
 - Node and node-pool CRUD with many-to-many membership
+- User and user-group management with encrypted per-user VLESS credentials and many-to-many node authorization
+- Real Xray per-access uplink/downlink accounting with BigInt deltas, lifetime/current-cycle totals, counter-reset recovery, quotas, monthly/manual resets, expiration, and near-real-time enforcement
+- Full desired-state Xray reconciliation preserving legacy node clients, with credential rotation and explicit per-node user share links
 - Web notification center and searchable audit log
 - Client-independent policies with ordered, first-match-wins rules and node-pool actions
 - Deterministic Mihomo, sing-box, and raw VLESS subscription compilers with explicit diagnostics
@@ -64,6 +68,10 @@ flowchart LR
   API -->|Bearer token| Agent["ProxyHub Agent"]
   Agent -->|validate + atomic apply / rollback| Config[("Xray config volume")]
   Agent -->|restart signal| Supervisor["Xray supervisor"]
+  Xray -->|container-internal metrics| Agent
+  API --> Users["User access reconciler + traffic accounting"]
+  Users --> DB
+  Users -->|authenticated batch stats| Agent
   Config --> Xray["Xray-core"]
   Supervisor --> Xray
   API --> Policy["Policy compiler core"]
@@ -158,6 +166,7 @@ docker compose logs -f proxyhub-server proxyhub-agent xray caddy
 | `PROXYHUB_NETWORK_PERF_TARGETS_JSON`      | No                 | empty                        | Registry of 1–5 controlled HTTPS benchmark targets             |
 | `PROXYHUB_NETWORK_PERF_TIMEOUT_MS`        | No                 | `120000`                     | Global on-demand benchmark timeout                             |
 | `PROXYHUB_NETWORK_PERF_TARGET_TIMEOUT_MS` | No                 | `20000`                      | Timeout applied to each configured target                      |
+| `PROXYHUB_TRAFFIC_ACCOUNTING_INTERVAL_MS` | No                 | `30000`                      | Batch Xray user-accounting and enforcement interval            |
 | `PROXYHUB_NETWORK_PERF_NODE_HOST`         | No                 | `host.docker.internal`       | Container-safe address used to reach the selected Xray inbound |
 | `PROXYHUB_NETWORK_PERF_TEST_MODE`         | No                 | `false`                      | CI/development-only private target and insecure TLS opt-in     |
 
@@ -196,7 +205,11 @@ pnpm build
 pnpm test:compat
 pnpm test:migration
 pnpm test:rulesets
+pnpm test:subscriptions
 pnpm test:network-performance
+pnpm test:users
+pnpm test:traffic
+pnpm test:security
 pnpm test:runtime-packages
 pnpm test:manifest
 pnpm test:ops
@@ -205,7 +218,7 @@ pnpm lint:shell
 pnpm compat:validate:windows
 ```
 
-The integration suite creates isolated SQLite databases, tests fresh, V0.1.1, and populated V0.2.1-to-V0.3 upgrades, and covers administrator security, Xray rollback, policies, Rule Set CRUD/import/cache/SSRF/LKG/concurrency, deterministic compilation, subscriptions, notifications, and audit logs. The runtime package regression asserts that every Server workspace dependency resolves to compiled `dist/index.js`, never TypeScript under `src`. GitHub Actions additionally builds immutable images, starts Web, Server, Agent, Xray, and Caddy, requires health with zero restarts, validates build metadata and SQLite, creates/verifies a backup, exercises dry-run operations, and simulates a failed update in an isolated Compose project.
+The integration suite creates isolated SQLite databases, tests fresh, V0.1.1, and populated V0.2.1-to-V0.4 upgrades, and covers administrator security, Xray rollback, policies, Rule Set CRUD/import/cache/SSRF/LKG/concurrency, deterministic compilation, subscriptions, user access and traffic accounting, notifications, and audit logs. The runtime package regression asserts that every Server workspace dependency resolves to compiled `dist/index.js`, never TypeScript under `src`. GitHub Actions additionally builds immutable images, starts Web, Server, Agent, Xray, and Caddy, requires health with zero restarts, validates build metadata and SQLite, creates/verifies a backup, exercises dry-run operations, and simulates a failed update in an isolated Compose project.
 
 The complete Linux deployment acceptance procedure is in [docs/deployment-smoke-test.md](docs/deployment-smoke-test.md). Diagnostics architecture and safety boundaries are documented in [docs/diagnostics/overview.md](docs/diagnostics/overview.md).
 
@@ -245,6 +258,19 @@ All responses use `{ "success": true, "data": ... }` or:
 | `PATCH`, `DELETE`        | `/api/nodes/:id`                                 | Update/delete a node                       |
 | `POST`                   | `/api/nodes/:id/clone`                           | Clone with fresh credentials               |
 | `GET`                    | `/api/nodes/:id/share`                           | VLESS URI and QR code                      |
+| `GET`                    | `/api/nodes/:id/users`                           | Authorized users and per-node traffic      |
+| `GET`, `POST`            | `/api/users`                                     | Paginated users / create a user            |
+| `GET`, `PATCH`, `DELETE` | `/api/users/:id`                                 | Read/update/soft-delete a user             |
+| `POST`                   | `/api/users/:id/enable`                          | Enable an administrator-disabled user      |
+| `POST`                   | `/api/users/:id/disable`                         | Administratively disable a user            |
+| `POST`                   | `/api/users/:id/credential/rotate`               | Atomically rotate the encrypted UUID       |
+| `GET`                    | `/api/users/:id/traffic`                         | Current/lifetime user and access traffic   |
+| `POST`                   | `/api/users/:id/traffic/reset`                   | Reset current-cycle traffic                |
+| `GET`, `POST`            | `/api/users/:id/access`                          | List or batch-grant node access            |
+| `DELETE`                 | `/api/users/:id/access/:accessId`                | Revoke one node access                     |
+| `POST`                   | `/api/users/:id/access/:accessId/share-link`     | Explicit no-store VLESS share link         |
+| `GET`, `POST`            | `/api/user-groups`                               | List/create user groups                    |
+| `PATCH`, `DELETE`        | `/api/user-groups/:id`                           | Update/delete an unused user group         |
 | `GET`, `POST`            | `/api/node-pools`                                | List/create node pools                     |
 | `PUT`, `DELETE`          | `/api/node-pools/:id`                            | Replace/delete a pool                      |
 | `GET`, `POST`            | `/api/policies`                                  | List/create policies                       |
@@ -289,7 +315,7 @@ All responses use `{ "success": true, "data": ... }` or:
 
 ## Database
 
-The foundation migration creates infrastructure and security tables. The additive V0.2 migration creates `Policy`, `PolicyRule`, and `Subscription`. The additive V0.3 migration creates `RuleSet`, `RuleSetEntry`, and `RuleSetCache`, then adds restrictive Rule Set references to `PolicyRule`; existing rules remain `INLINE`. The additive V0.4 migration creates `NetworkPerformanceRun` and `NetworkPerformanceTargetResult`. No existing table or data is dropped.
+The foundation migration creates infrastructure and security tables. The additive V0.2 migration creates `Policy`, `PolicyRule`, and `Subscription`. The additive V0.3 migration creates `RuleSet`, `RuleSetEntry`, and `RuleSetCache`, then adds restrictive Rule Set references to `PolicyRule`; existing rules remain `INLINE`. The first additive V0.4 migration creates `NetworkPerformanceRun` and `NetworkPerformanceTargetResult`. The Phase 2 V0.4 migration adds `User`, `UserGroup`, encrypted `UserCredential`, `UserAccess`, current/lifetime traffic usage, and runtime counter tables. No existing table or data is dropped.
 
 Sensitive values are never stored in plaintext:
 
@@ -308,6 +334,7 @@ apps/
 packages/
   diagnostics-core/    Validated status, freshness, redaction, and report schemas
   network-performance-core/ Metric schemas, deterministic scoring, ratings, and analysis
+  users-core/          Effective status, traffic delta, cycle, and Xray metric helpers
   shared/              Shared schemas, API types, event constants
   xray-manager/        Reality adapter and validated config operations
   policy-core/         Normalizer, validator, capability matrix, and client adapters
@@ -354,6 +381,7 @@ docs/design/           Accepted visual design reference
 - [Diagnostics troubleshooting](docs/operations/troubleshooting.md)
 - [Diagnostics on a low-resource VPS](docs/operations/low-resource-vps.md)
 - [V0.4 Phase 1 architecture](docs/v0.4-architecture.md)
+- [Users, access, and traffic accounting](docs/users-access-traffic.md)
 - [Network Performance Test metrics and security](docs/network-performance.md)
 - [Language selection](docs/user-guide/language.md)
 - [Quick Start](docs/user-guide/quick-start.md)
@@ -363,7 +391,7 @@ docs/design/           Accepted visual design reference
 
 ## Roadmap
 
-V0.3.1 Phase 1 provides the release and operations foundation, Phase 2 adds read-only diagnostics and runtime visibility, and Phase 3 adds guided setup, dependency-safe deletion, subscription readiness, sanitized client delivery, and Web localization. V0.4 Phase 1 adds a bounded, explicit server-side Network Performance Test; it does not represent final-user bandwidth and does not automate policy, pool, or subscription decisions. VPS deployment acceptance remains pending. Reality Target Compatibility VPS verification, real Mihomo/sing-box GUI imports, real remote Rule Set public-network verification, real Network Performance targets, and real GHCR update/rollback exercises remain pending. Automated repair, Web restart/deploy/update/rollback/restore controls, scheduled/cloud backups, automatic cross-schema database restore, distributed controllers, marketplace/sharing, AI rule generation, traffic collection, quotas, billing, mobile apps, multi-server orchestration, and V0.4 Phase 2 remain future work.
+V0.3.1 Phase 1 provides the release and operations foundation, Phase 2 adds read-only diagnostics and runtime visibility, and Phase 3 adds guided setup, dependency-safe deletion, subscription readiness, sanitized client delivery, and Web localization. V0.4 Phase 1 adds a bounded, explicit server-side Network Performance Test; it does not represent final-user bandwidth and does not automate policy, pool, or subscription decisions. V0.4 Phase 2 adds administrator-managed users, node authorization, real Xray traffic accounting, quotas, expiration, and reconciliation. VPS deployment acceptance remains pending. Reality Target Compatibility VPS verification, real Mihomo/sing-box GUI imports, real remote Rule Set public-network verification, real Network Performance targets, traffic-accounting runtime verification, and real GHCR update/rollback exercises remain pending. User portals, billing, payments, per-user subscriptions, online connection maps, device limits, bandwidth shaping, quota-warning thresholds, scheduled/cloud backups, distributed controllers, marketplace/sharing, AI rule generation, mobile apps, and multi-server orchestration remain future work.
 
 ## Contributing
 

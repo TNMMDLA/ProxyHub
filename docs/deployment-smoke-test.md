@@ -256,6 +256,21 @@ Before final acceptance, complete the V0.4 Phase 1 performance test with control
 
 This is a server-side benchmark only. Separately test real client traffic from the intended user networks; do not infer end-user speed from this result.
 
+### V0.4 Phase 2 users and traffic
+
+1. Create a user group and a user with a small test quota, future expiration, monthly reset day, and access to two VLESS/TCP/REALITY/Vision nodes.
+2. Confirm each affected inbound retains its legacy client and adds one managed client. Confirm the UUID is identical across both nodes while each client email/stats identity differs and contains no user name.
+3. Import each explicit node share link in a test client and generate controlled uplink and downlink traffic.
+4. Wait at least one `PROXYHUB_TRAFFIC_ACCOUNTING_INTERVAL_MS`, then confirm per-node, current-cycle, lifetime, uplink, and downlink values increase without Demo Data.
+5. Poll again without traffic and confirm totals do not increase. Restart Xray, generate more traffic, and confirm lifetime totals survive the Xray counter reset.
+6. Reach the exact quota and confirm one transition notification, one audit event, one full Xray apply, and loss of access on every authorized node. Confirm the legacy clients continue working.
+7. Increase the quota and confirm access returns once. Disable the user manually, reset traffic, and confirm manual disable still wins until an administrator enables the user.
+8. Set expiration a few minutes ahead, wait through it, and confirm the user becomes `EXPIRED` and is removed from every node. Extend expiration and confirm reactivation.
+9. Rotate the credential. Confirm the old link stops working on every authorized node and newly requested links work.
+10. Disable, enable, revoke, and batch-grant node access. Confirm the Users page and each Node's authorized-user view agree.
+11. Stop or make Xray validation fail during a user change. Confirm the API rejects the database change, the previous config remains active or is rolled back, and a critical notification plus failure audit is recorded without credentials.
+12. Confirm the Xray metrics listener is not published on a host/public port. Search API responses, logs, audit metadata, notifications, and diagnostics exports for the managed UUID, private keys, Agent token, encryption key, or authorization headers.
+
 ```bash
 docker compose ps
 docker compose exec xray xray run -test -config /etc/xray/config.json

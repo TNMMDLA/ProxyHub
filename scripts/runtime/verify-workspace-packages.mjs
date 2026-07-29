@@ -10,6 +10,7 @@ const packages = [
   ['@proxyhub/policy-core', ['compilePolicy', 'CAPABILITIES']],
   ['@proxyhub/rule-set-core', ['parseRuleSet', 'normalizeRuleSet']],
   ['@proxyhub/shared', ['createNodeSchema', 'createRuleSetSchema']],
+  ['@proxyhub/users-core', ['effectiveUserStatus', 'trafficDelta']],
   ['@proxyhub/xray-manager', ['buildXrayConfig', 'createVlessUri']],
 ];
 

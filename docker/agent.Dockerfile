@@ -15,12 +15,14 @@ COPY apps/agent/package.json apps/agent/package.json
 COPY packages/diagnostics-core/package.json packages/diagnostics-core/package.json
 COPY packages/network-performance-core/package.json packages/network-performance-core/package.json
 COPY packages/shared/package.json packages/shared/package.json
+COPY packages/users-core/package.json packages/users-core/package.json
 COPY packages/xray-manager/package.json packages/xray-manager/package.json
 RUN pnpm install --filter @proxyhub/agent... --frozen-lockfile
 COPY apps/agent apps/agent
 COPY packages/diagnostics-core packages/diagnostics-core
 COPY packages/network-performance-core packages/network-performance-core
 COPY packages/shared packages/shared
+COPY packages/users-core packages/users-core
 COPY packages/xray-manager packages/xray-manager
 RUN node scripts/release/generate-version.mjs \
   && pnpm --filter @proxyhub/agent... build

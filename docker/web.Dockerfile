@@ -13,11 +13,13 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/diagnostics-core/package.json packages/diagnostics-core/package.json
 COPY packages/network-performance-core/package.json packages/network-performance-core/package.json
 COPY packages/shared/package.json packages/shared/package.json
+COPY packages/users-core/package.json packages/users-core/package.json
 RUN pnpm install --filter @proxyhub/web... --frozen-lockfile
 COPY apps/web apps/web
 COPY packages/diagnostics-core packages/diagnostics-core
 COPY packages/network-performance-core packages/network-performance-core
 COPY packages/shared packages/shared
+COPY packages/users-core packages/users-core
 RUN node scripts/release/generate-version.mjs \
   && pnpm --filter @proxyhub/web... build
 
