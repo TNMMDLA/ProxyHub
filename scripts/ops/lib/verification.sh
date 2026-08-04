@@ -71,7 +71,7 @@ proxyhub_health_metadata_valid() {
 
 proxyhub_caddy_logs_have_explicit_failure() {
   local line json level lowered
-  while IFS= read -r line; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ "$line" == *'{'* ]]; then
       json="{${line#*\{}"
       if jq -e . >/dev/null 2>&1 <<<"$json"; then

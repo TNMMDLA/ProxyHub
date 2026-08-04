@@ -117,6 +117,33 @@ describe.skipIf(!linux)('deployment verification helper behavior', () => {
     ).resolves.toBeDefined();
   });
 
+  it('detects an explicit Caddy error-level log ending with a newline', async () => {
+    const failure = JSON.stringify({ level: 'error', msg: 'challenge failed' });
+    await expect(
+      bash(`printf '%s\\n' '${failure}' | proxyhub_caddy_logs_have_explicit_failure`),
+    ).resolves.toBeDefined();
+  });
+
+  it('processes the final unterminated line in multiline Caddy logs', async () => {
+    const informational = JSON.stringify({ level: 'info', msg: 'serving initial configuration' });
+    const failure = JSON.stringify({ level: 'error', msg: 'challenge failed' });
+    await expect(
+      bash(
+        `printf '%s\\n%s' '${informational}' '${failure}' | ` +
+          'proxyhub_caddy_logs_have_explicit_failure',
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it.each(['', 'not-json'])(
+    'does not treat empty or invalid Caddy logs as failures',
+    async (log) => {
+      await expect(
+        bash(`printf '%s' '${log}' | proxyhub_caddy_logs_have_explicit_failure`),
+      ).rejects.toBeDefined();
+    },
+  );
+
   it('binds a recreated Agent to the current Xray container ID', async () => {
     const { stdout } = await bash(
       `ops_compose(){ ` +
