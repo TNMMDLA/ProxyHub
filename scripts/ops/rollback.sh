@@ -76,7 +76,7 @@ restore_current_on_failure() {
   if [[ "$ACTIVE" == "true" && -n "$TRANSACTION_ID" ]]; then
     ops_capture_diagnostics "$TRANSACTION_ID" || true
     ops_manifest_export_images "$CURRENT_MANIFEST"
-    if ops_compose up -d --remove-orphans &&
+    if ops_start_runtime_services &&
       "$OPS_ROOT/scripts/ops/health.sh" \
         --manifest "$CURRENT_MANIFEST" \
         --env-file "$PROXYHUB_ENV_FILE" \
@@ -116,7 +116,7 @@ done
 ops_transaction_stage "$TRANSACTION_ID" IMAGES_PULLED
 ops_transaction_stage "$TRANSACTION_ID" MIGRATION_VALIDATED
 ops_transaction_stage "$TRANSACTION_ID" ROLLBACK_STARTED
-ops_compose up -d --remove-orphans
+ops_start_runtime_services
 ops_transaction_stage "$TRANSACTION_ID" SERVICES_STARTED
 "$OPS_ROOT/scripts/ops/health.sh" \
   --manifest "$target_manifest" \

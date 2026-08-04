@@ -7,6 +7,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 MANIFEST=""
 EXPECTED_VERSION=""
 EXPECTED_SHA=""
+EXPECTED_ENVIRONMENT=""
+EXPECTED_MODE=""
 TIMEOUT=120
 RESULTS='[]'
 
@@ -59,6 +61,8 @@ if [[ -n "$MANIFEST" ]]; then
   ops_manifest_export_images "$MANIFEST"
   [[ -n "$EXPECTED_VERSION" ]] || EXPECTED_VERSION="$(jq -r '.version' "$MANIFEST")"
   [[ -n "$EXPECTED_SHA" ]] || EXPECTED_SHA="$(jq -r '.gitSha' "$MANIFEST")"
+  EXPECTED_ENVIRONMENT="$(jq -r '.buildEnvironment // empty' "$MANIFEST")"
+  EXPECTED_MODE="$(jq -r '.deployMode // empty' "$MANIFEST")"
 elif [[ -f "$PROXYHUB_STATE_DIR/releases/current.json" ]]; then
   state_manifest="$(jq -r '.manifestPath' "$PROXYHUB_STATE_DIR/releases/current.json")"
   if [[ -f "$state_manifest" ]]; then
@@ -72,7 +76,7 @@ all_ready=false
 while ((SECONDS < deadline)); do
   all_ready=true
   for service in "${services[@]}"; do
-    container_id="$(ops_compose ps -q --all "$service" 2>/dev/null || true)"
+    container_id="$(proxyhub_compose_service_container_id ops_compose "$service" true || true)"
     if [[ -z "$container_id" ]]; then
       all_ready=false
       continue
@@ -89,7 +93,7 @@ while ((SECONDS < deadline)); do
 done
 
 for service in "${services[@]}"; do
-  container_id="$(ops_compose ps -q --all "$service" 2>/dev/null || true)"
+  container_id="$(proxyhub_compose_service_container_id ops_compose "$service" true || true)"
   if [[ -z "$container_id" ]]; then
     result "service:$service" FAIL "Container is missing"
     continue
@@ -109,14 +113,17 @@ health_payload="$(
     "fetch('http://127.0.0.1:3000/api/health').then(async r=>{const b=await r.text();if(!r.ok)process.exit(2);process.stdout.write(b)}).catch(()=>process.exit(3))" \
     2>/dev/null || true
 )"
-if jq -e '.success == true and .data.status == "ok"' >/dev/null 2>&1 <<<"$health_payload"; then
+health_data="$(printf '%s' "$health_payload" | proxyhub_health_data 2>/dev/null || true)"
+if [[ -n "$health_data" ]] &&
+  proxyhub_health_metadata_valid \
+    "$health_data" "$EXPECTED_VERSION" "$EXPECTED_SHA" "$EXPECTED_ENVIRONMENT" "$EXPECTED_MODE"; then
   result server-api PASS "Server health endpoint returned ok"
 else
-  result server-api FAIL "Server health endpoint is unavailable or invalid"
+  result server-api FAIL "Server health endpoint is unavailable or metadata is invalid"
 fi
 
-actual_version="$(jq -r '.data.version // empty' <<<"$health_payload" 2>/dev/null || true)"
-actual_sha="$(jq -r '.data.gitSha // empty' <<<"$health_payload" 2>/dev/null || true)"
+actual_version="$(jq -r '.version // empty' <<<"$health_data" 2>/dev/null || true)"
+actual_sha="$(jq -r '.gitSha // empty' <<<"$health_data" 2>/dev/null || true)"
 if [[ -z "$EXPECTED_VERSION" || "$actual_version" == "$EXPECTED_VERSION" ]]; then
   result release-version PASS "Version ${actual_version:-not constrained}"
 else
@@ -145,6 +152,20 @@ ops_compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile >/dev/nul
   result caddy-config PASS "Caddy configuration is valid" ||
   result caddy-config FAIL "Caddy configuration validation failed"
 
+caddy_logs="$(ops_compose logs --no-color --since=10m caddy 2>&1 || true)"
+if proxyhub_caddy_logs_have_explicit_failure <<<"$caddy_logs"; then
+  result caddy-logs FAIL "Caddy reported an explicit runtime or certificate failure"
+else
+  result caddy-logs PASS "Caddy has no explicit error-level failures"
+fi
+
+if [[ -n "$(ops_compose port caddy 80 2>/dev/null || true)" ]] &&
+  [[ -n "$(ops_compose port caddy 443 2>/dev/null || true)" ]]; then
+  result caddy-ports PASS "Caddy publishes HTTP and HTTPS ports"
+else
+  result caddy-ports FAIL "Caddy does not publish both HTTP and HTTPS ports"
+fi
+
 panel_domain="$(sed -n 's/^PANEL_DOMAIN=//p' "$PROXYHUB_ENV_FILE" | head -n1)"
 if [[ "$panel_domain" == "localhost" ]]; then
   https_url=https://localhost/api/health
@@ -153,12 +174,22 @@ else
   https_url="https://$panel_domain/api/health"
   curl_arguments=(-sSf)
 fi
-if curl "${curl_arguments[@]}" --max-time 15 "$https_url" |
-  jq -e '.success == true and .data.status == "ok"' >/dev/null 2>&1; then
+https_payload="$(curl "${curl_arguments[@]}" --max-time 15 "$https_url" 2>/dev/null || true)"
+https_data="$(printf '%s' "$https_payload" | proxyhub_health_data 2>/dev/null || true)"
+if [[ -n "$https_data" ]] &&
+  proxyhub_health_metadata_valid \
+    "$https_data" "$EXPECTED_VERSION" "$EXPECTED_SHA" "$EXPECTED_ENVIRONMENT" "$EXPECTED_MODE"; then
   result https PASS "Caddy HTTPS route returned Server health"
 else
   result https FAIL "Caddy HTTPS route is unavailable"
 fi
+
+panel_url="${https_url%/api/health}/"
+panel_status="$(curl "${curl_arguments[@]}" --output /dev/null --max-time 15 --write-out '%{http_code}' "$panel_url" 2>/dev/null || true)"
+case "$panel_status" in
+  200 | 301 | 302 | 307 | 308) result caddy-panel PASS "Caddy panel route returned HTTP $panel_status" ;;
+  *) result caddy-panel FAIL "Caddy panel route returned HTTP ${panel_status:-unavailable}" ;;
+esac
 
 ops_compose exec -T proxyhub-server pnpm --filter @proxyhub/server exec prisma migrate status \
   >/dev/null 2>&1 &&

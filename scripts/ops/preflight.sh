@@ -209,7 +209,7 @@ else
   fail compose-config "Merged release Compose configuration is invalid"
 fi
 
-server_id="$(ops_compose ps -q --all proxyhub-server 2>/dev/null || true)"
+server_id="$(proxyhub_compose_service_container_id ops_compose proxyhub-server true || true)"
 if [[ -n "$server_id" ]] &&
   ops_compose exec -T proxyhub-server sh -c 'test -r /app/data/proxyhub.db && test -w /app/data/proxyhub.db' \
     >/dev/null 2>&1; then

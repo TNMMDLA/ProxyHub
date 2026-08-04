@@ -51,6 +51,18 @@ docker compose up -d
 docker compose ps
 ```
 
+For any `docker inspect` or `docker exec` validation that needs a container ID, resolve it from
+the Compose service and require one result:
+
+```bash
+XRAY_CID="$(docker compose ps -q --all xray)"
+AGENT_CID="$(docker compose ps -q --all proxyhub-agent)"
+```
+
+Do not infer IDs from names such as `proxyhub-xray-1`; Compose project names and replica suffixes
+are deployment details. If Xray is recreated, force-recreate Agent and confirm its `PidMode` is
+`container:${XRAY_CID}` before proceeding.
+
 Expected services:
 
 - `proxyhub-web`: running
@@ -95,6 +107,9 @@ curl --fail --head "https://${PANEL_DOMAIN}/"
 Verify:
 
 - `/api/health` returns `success: true`
+- current responses expose runtime metadata below `data`; health tooling must unwrap `data` before
+  checking `status`, `version`, `gitSha`, `buildEnvironment`, and `deployMode` (legacy flat JSON is
+  still accepted by the parser)
 - Caddy serves a trusted certificate for the configured hostname
 - HTTP redirects to HTTPS
 - TLS hostname and certificate chain are valid
@@ -104,6 +119,8 @@ Verify:
 
 1. Open `https://<PANEL_DOMAIN>`.
 2. Create the first administrator with a unique password of at least 12 characters.
+   Confirm the administrator `lastLoginAt` and initial Session creation time represent the same
+   bootstrap authentication event.
 3. Log out and log back in.
 4. Open **Security**, enable TOTP, and save all ten recovery codes offline.
 5. Log out, verify TOTP login, then verify one recovery code can be used only once.

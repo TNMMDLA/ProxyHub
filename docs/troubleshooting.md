@@ -40,7 +40,9 @@ If containers are healthy but version/SHA fails, inspect:
 ```bash
 docker compose exec -T proxyhub-server \
   node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>r.text()).then(console.log)"
-docker inspect proxyhub-proxyhub-server-1 \
+SERVER_CID="$(docker compose ps -q --all proxyhub-server)"
+test -n "$SERVER_CID"
+docker inspect "$SERVER_CID" \
   --format '{{json .Config.Labels}}'
 ```
 

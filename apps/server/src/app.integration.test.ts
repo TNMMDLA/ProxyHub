@@ -246,6 +246,30 @@ describe('ProxyHub foundation API', () => {
     await prisma.$disconnect();
   });
 
+  it('rolls back bootstrap when a transactional write fails', async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER reject_bootstrap_notification
+      BEFORE INSERT ON Notification
+      WHEN NEW.title = 'ProxyHub is ready'
+      BEGIN
+        SELECT RAISE(ABORT, 'synthetic bootstrap failure');
+      END;
+    `);
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/auth/bootstrap',
+        payload: { username: 'failed-admin', password: 'correct-horse-battery-staple' },
+      });
+      expect(response.statusCode).toBe(500);
+      expect(response.cookies).toHaveLength(0);
+      expect(await prisma.adminUser.count()).toBe(0);
+      expect(await prisma.session.count()).toBe(0);
+    } finally {
+      await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS reject_bootstrap_notification');
+    }
+  });
+
   it('bootstraps an administrator and creates a secure session', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -256,9 +280,47 @@ describe('ProxyHub foundation API', () => {
     cookie = response.cookies[0]?.value ? `proxyhub_session=${response.cookies[0].value}` : '';
     expect(cookie).toContain('proxyhub_session=');
 
+    const [administrator, session] = await Promise.all([
+      prisma.adminUser.findUniqueOrThrow({ where: { username: 'admin' } }),
+      prisma.session.findFirstOrThrow(),
+    ]);
+    expect(await prisma.adminUser.count()).toBe(1);
+    expect(await prisma.session.count()).toBe(1);
+    expect(administrator.lastLoginAt).not.toBeNull();
+    expect(administrator.lastLoginAt?.getTime()).toBe(session.createdAt.getTime());
+    expect(session.lastUsedAt.getTime()).toBe(session.createdAt.getTime());
+
     const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
     expect(me.statusCode).toBe(200);
     expect(me.json().data.role).toBe('ADMIN');
+  });
+
+  it('rejects repeated bootstrap without creating partial authentication records', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/bootstrap',
+      payload: { username: 'second-admin', password: 'correct-horse-battery-staple' },
+    });
+    expect(response.statusCode, response.body).toBe(409);
+    expect(response.json().error.code).toBe('ALREADY_BOOTSTRAPPED');
+    expect(await prisma.adminUser.count()).toBe(1);
+    expect(await prisma.session.count()).toBe(1);
+  });
+
+  it('updates lastLoginAt during a normal administrator login', async () => {
+    const before = await prisma.adminUser.findUniqueOrThrow({ where: { username: 'admin' } });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: 'admin', password: 'correct-horse-battery-staple' },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    const after = await prisma.adminUser.findUniqueOrThrow({ where: { username: 'admin' } });
+    expect(after.lastLoginAt?.getTime()).toBeGreaterThan(before.lastLoginAt?.getTime() ?? 0);
+    const loginCookie = response.cookies[0]?.value;
+    expect(loginCookie).toBeTruthy();
+    cookie = `proxyhub_session=${loginCookie}`;
   });
 
   it('enables TOTP and returns ten one-time recovery codes', async () => {

@@ -14,7 +14,7 @@ import {
   hashToken,
   verifyPassword,
 } from '../security/crypto.js';
-import { authenticate, createSession } from '../auth/session.js';
+import { authenticate, createSession, setSessionCookie } from '../auth/session.js';
 
 const MAX_FAILED_LOGINS = 5;
 
@@ -58,20 +58,38 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if ((await prisma.adminUser.count()) > 0) {
       throw new AppError('ALREADY_BOOTSTRAPPED', 'Administrator already exists', 409);
     }
-    const user = await prisma.adminUser.create({
-      data: { username: input.username, passwordHash: await hashPassword(input.password) },
+    const authenticatedAt = new Date();
+    const passwordHash = await hashPassword(input.password);
+    const bootstrap = await prisma.$transaction(async (database) => {
+      if ((await database.adminUser.count()) > 0) {
+        throw new AppError('ALREADY_BOOTSTRAPPED', 'Administrator already exists', 409);
+      }
+      const created = await database.adminUser.create({
+        data: { username: input.username, passwordHash, lastLoginAt: authenticatedAt },
+      });
+      const session = await createSession(request, reply, created.id, {
+        database,
+        authenticatedAt,
+        setCookie: false,
+      });
+      request.admin = {
+        id: created.id,
+        username: created.username,
+        role: created.role,
+        totpEnabled: false,
+      };
+      await audit(request, 'ADMIN_BOOTSTRAP', 'AdminUser', 'SUCCESS', created.id, {}, database);
+      await database.notification.create({
+        data: {
+          level: 'SUCCESS',
+          title: 'ProxyHub is ready',
+          message: 'Administrator account created successfully.',
+        },
+      });
+      return { user: created, session };
     });
-    await createSession(request, reply, user.id);
-    request.admin = { id: user.id, username: user.username, role: user.role, totpEnabled: false };
-    await audit(request, 'ADMIN_BOOTSTRAP', 'AdminUser', 'SUCCESS', user.id);
-    await prisma.notification.create({
-      data: {
-        level: 'SUCCESS',
-        title: 'ProxyHub is ready',
-        message: 'Administrator account created successfully.',
-      },
-    });
-    return reply.code(201).send({ success: true, data: { username: user.username } });
+    setSessionCookie(reply, bootstrap.session);
+    return reply.code(201).send({ success: true, data: { username: bootstrap.user.username } });
   });
 
   app.post('/login', async (request, reply) => {
@@ -118,16 +136,17 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       }
     }
     const isNewIp = Boolean(user.lastLoginIp && user.lastLoginIp !== request.ip);
+    const authenticatedAt = new Date();
     await prisma.adminUser.update({
       where: { id: user.id },
       data: {
         failedLoginCount: 0,
         lockedUntil: null,
-        lastLoginAt: new Date(),
+        lastLoginAt: authenticatedAt,
         lastLoginIp: request.ip,
       },
     });
-    await createSession(request, reply, user.id);
+    await createSession(request, reply, user.id, { authenticatedAt });
     request.admin = {
       id: user.id,
       username: user.username,

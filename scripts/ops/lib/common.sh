@@ -7,6 +7,9 @@ readonly PROXYHUB_OPS_COMMON_LOADED=1
 OPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 readonly OPS_ROOT
 
+# shellcheck source=verification.sh
+source "$OPS_ROOT/scripts/ops/lib/verification.sh"
+
 : "${PROXYHUB_STATE_DIR:=$OPS_ROOT/.proxyhub/state}"
 : "${PROXYHUB_BACKUP_DIR:=$OPS_ROOT/backups}"
 : "${PROXYHUB_ENV_FILE:=$OPS_ROOT/.env}"
@@ -198,6 +201,23 @@ ops_compose() {
     -f "$PROXYHUB_COMPOSE_FILE" \
     -f "$PROXYHUB_RELEASE_COMPOSE_FILE" \
     "$@"
+}
+
+ops_start_runtime_services() {
+  local xray_container_id agent_container_id agent_pid_mode
+  ops_compose up -d --no-deps xray
+  xray_container_id="$(proxyhub_compose_service_container_id ops_compose xray)" ||
+    ops_die OPS_CONTAINER_NOT_FOUND "Xray service did not resolve to exactly one container"
+
+  ops_compose up -d --no-deps --force-recreate proxyhub-agent
+  agent_container_id="$(proxyhub_compose_service_container_id ops_compose proxyhub-agent)" ||
+    ops_die OPS_CONTAINER_NOT_FOUND "Agent service did not resolve to exactly one container"
+  agent_pid_mode="$(docker inspect --format '{{.HostConfig.PidMode}}' "$agent_container_id")"
+  [[ "$agent_pid_mode" == "container:$xray_container_id" ]] ||
+    ops_die OPS_AGENT_PID_NAMESPACE_MISMATCH \
+      "Agent PID namespace does not reference the current Xray service container"
+
+  ops_compose up -d --remove-orphans proxyhub-server proxyhub-web caddy
 }
 
 ops_capture_diagnostics() {

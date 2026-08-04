@@ -98,7 +98,7 @@ for image in "$PROXYHUB_WEB_IMAGE" "$PROXYHUB_SERVER_IMAGE" "$PROXYHUB_AGENT_IMA
 done
 
 ops_transaction_stage "$TRANSACTION_ID" MIGRATION_VALIDATED
-ops_compose up -d --remove-orphans
+ops_start_runtime_services
 ops_transaction_stage "$TRANSACTION_ID" MIGRATION_APPLIED
 ops_transaction_stage "$TRANSACTION_ID" SERVICES_STARTED
 "$OPS_ROOT/scripts/ops/health.sh" \

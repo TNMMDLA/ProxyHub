@@ -69,7 +69,7 @@ rollback_after_failure() {
     return 1
   fi
   ops_manifest_export_images "$OLD_MANIFEST"
-  if ops_compose up -d --remove-orphans &&
+  if ops_start_runtime_services &&
     "$OPS_ROOT/scripts/ops/health.sh" \
       --manifest "$OLD_MANIFEST" \
       --env-file "$PROXYHUB_ENV_FILE" \
@@ -166,7 +166,7 @@ ops_manifest_export_images "$MANIFEST"
 ops_transaction_stage "$TRANSACTION_ID" MIGRATION_VALIDATED
 ops_compose up -d proxyhub-server
 ops_transaction_stage "$TRANSACTION_ID" MIGRATION_APPLIED
-ops_compose up -d --remove-orphans
+ops_start_runtime_services
 ops_transaction_stage "$TRANSACTION_ID" SERVICES_STARTED
 "$OPS_ROOT/scripts/ops/health.sh" \
   --manifest "$MANIFEST" \

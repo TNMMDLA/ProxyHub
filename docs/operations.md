@@ -36,6 +36,24 @@ Every mutating command also supports `--dry-run`. Dry-run mode may inspect files
 DNS, and remote manifests, but does not pull images, start or stop containers, run migrations,
 write release state, create backups, or delete files.
 
+## Runtime verification semantics
+
+- Resolve containers from their Compose service with `docker compose ps -q --all <service>` and
+  require exactly one result. Never depend on a generated container name or project-name prefix.
+- Health responses normally use `{ "success": true, "data": { ... } }`. Operations unwrap
+  `data` before checking `status`, version, Git SHA, build environment, and deploy mode, while
+  retaining parser compatibility with legacy flat health JSON.
+- Starting or replacing Xray is followed by a forced Agent recreation. The Agent PID namespace
+  must reference the newly resolved Xray container ID before deployment can continue.
+- Caddy acceptance is led by container health, configuration validation, a successful HTTPS
+  request, and matching Server health metadata. Informational certificate maintenance, storage,
+  startup, HTTP/3, and normal ACME account messages are not failures merely because they contain
+  an `error` field; explicit error-level or certificate/challenge failures remain fatal.
+- The initial administrator bootstrap writes `lastLoginAt` and the first Session from the same
+  authentication timestamp in one database transaction. Existing installations require no
+  migration; an administrator whose prior bootstrap left the field empty can log out and log in
+  once to populate it through the normal login path.
+
 ## Global operation lock
 
 Deploy, update, rollback, backup create, and backup prune use one non-blocking `flock`. Concurrent

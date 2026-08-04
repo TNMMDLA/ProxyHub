@@ -61,6 +61,11 @@ describe('health contract', () => {
     ['release identity', 'release-sha'],
     ['Xray config', 'xray run -test'],
     ['database migration', 'prisma migrate status'],
+    ['dynamic service lookup', 'proxyhub_compose_service_container_id'],
+    ['health envelope parser', 'proxyhub_health_data'],
+    ['Caddy error-level parsing', 'proxyhub_caddy_logs_have_explicit_failure'],
+    ['Caddy published ports', 'Caddy publishes HTTP and HTTPS ports'],
+    ['Caddy panel route', 'Caddy panel route returned HTTP'],
   ] as const;
   it.each(cases)('covers %s', async (_name, pattern) => {
     expect(await source('scripts/ops/health.sh')).toContain(pattern);

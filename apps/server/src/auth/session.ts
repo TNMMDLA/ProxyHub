@@ -1,4 +1,4 @@
-import type { AdminUser } from '@prisma/client';
+import type { AdminUser, Prisma } from '@prisma/client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
@@ -11,25 +11,51 @@ declare module 'fastify' {
   }
 }
 
-export async function createSession(request: FastifyRequest, reply: FastifyReply, userId: string) {
+interface CreateSessionOptions {
+  database?: Pick<Prisma.TransactionClient, 'session'>;
+  authenticatedAt?: Date;
+  setCookie?: boolean;
+}
+
+interface SessionCookie {
+  token: string;
+  expiresAt: Date;
+}
+
+export function setSessionCookie(reply: FastifyReply, session: SessionCookie): void {
+  reply.setCookie(config.SESSION_COOKIE_NAME, session.token, {
+    httpOnly: true,
+    secure: config.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+    expires: session.expiresAt,
+  });
+}
+
+export async function createSession(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  userId: string,
+  options: CreateSessionOptions = {},
+) {
+  const database = options.database ?? prisma;
+  const authenticatedAt = options.authenticatedAt ?? new Date();
   const token = newOpaqueToken();
-  const expiresAt = new Date(Date.now() + config.SESSION_TTL_HOURS * 60 * 60 * 1000);
-  await prisma.session.create({
+  const expiresAt = new Date(authenticatedAt.getTime() + config.SESSION_TTL_HOURS * 60 * 60 * 1000);
+  await database.session.create({
     data: {
       tokenHash: hashToken(token),
       userId,
       ip: request.ip,
       userAgent: request.headers['user-agent']?.slice(0, 500) ?? 'unknown',
+      createdAt: authenticatedAt,
+      lastUsedAt: authenticatedAt,
       expiresAt,
     },
   });
-  reply.setCookie(config.SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: config.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/',
-    expires: expiresAt,
-  });
+  const session = { token, expiresAt };
+  if (options.setCookie !== false) setSessionCookie(reply, session);
+  return session;
 }
 
 export async function authenticate(request: FastifyRequest): Promise<void> {

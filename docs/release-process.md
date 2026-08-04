@@ -17,7 +17,9 @@ Every release records:
 - repository, tag, and digest for Web, Server, Agent, and the ProxyHub Xray runtime
 
 `GET /api/health` returns this public identity without environment values, paths, tokens, or
-secrets. The Settings page displays the same identity.
+secrets. The current response wraps the identity in the standard `success`/`data` envelope;
+release tooling unwraps `data` before metadata assertions and also accepts legacy flat payloads.
+The Settings page displays the same identity.
 
 ## Manifest
 

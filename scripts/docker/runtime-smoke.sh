@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck source=../ops/lib/verification.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../ops/lib/verification.sh"
+
+runtime_compose() {
+  docker compose "$@"
+}
+
 services=(xray proxyhub-agent proxyhub-server proxyhub-web caddy)
 if docker compose config --services | grep -qx 'network-perf-fixture'; then
   services+=(network-perf-fixture)
@@ -10,7 +17,7 @@ deadline=$((SECONDS + 150))
 while (( SECONDS < deadline )); do
   all_healthy=true
   for service in "${services[@]}"; do
-    container_id="$(docker compose ps -q --all "$service")"
+    container_id="$(proxyhub_compose_service_container_id runtime_compose "$service" true || true)"
     if [[ -z "$container_id" ]]; then
       all_healthy=false
       continue
@@ -36,7 +43,7 @@ while (( SECONDS < deadline )); do
 done
 
 for service in "${services[@]}"; do
-  container_id="$(docker compose ps -q --all "$service")"
+  container_id="$(proxyhub_compose_service_container_id runtime_compose "$service")"
   state="$(docker inspect --format '{{.State.Status}}' "$container_id")"
   health="$(docker inspect --format '{{.State.Health.Status}}' "$container_id")"
   restart_count="$(docker inspect --format '{{.RestartCount}}' "$container_id")"
@@ -48,8 +55,18 @@ for service in "${services[@]}"; do
   echo "$service: state=$state health=$health restarts=$restart_count"
 done
 
-docker compose exec -T proxyhub-server node -e \
-  "fetch('http://127.0.0.1:3000/api/health').then(async response => { const body = await response.json(); const d=body?.data; if (!response.ok || body?.success !== true || d?.status !== 'ok' || typeof d?.version !== 'string' || typeof d?.gitSha !== 'string' || typeof d?.buildTime !== 'string' || d?.xrayVersion !== '26.5.9' || !/^[0-9a-f]{64}$/.test(d?.database?.migrationFingerprint ?? '')) process.exit(1); console.log(JSON.stringify(body)); }).catch(error => { console.error(error); process.exit(1); })"
+health_payload="$(
+  docker compose exec -T proxyhub-server node -e \
+    "fetch('http://127.0.0.1:3000/api/health').then(async response => { const body=await response.text(); if (!response.ok) process.exit(2); process.stdout.write(body); }).catch(error => { console.error(error); process.exit(1); })"
+)"
+health_data="$(printf '%s' "$health_payload" | proxyhub_health_data)"
+proxyhub_health_metadata_valid "$health_data"
+jq -e '
+  (.buildTime | type == "string" and length > 0) and
+  .xrayVersion == "26.5.9" and
+  (.database.migrationFingerprint | test("^[0-9a-f]{64}$"))
+' >/dev/null <<<"$health_data"
+printf '%s\n' "$health_payload"
 
 docker compose exec -T proxyhub-server sqlite3 --version
 database_integrity="$(
@@ -667,7 +684,7 @@ if docker compose exec -T proxyhub-agent sh -c \
 fi
 
 for service in "${services[@]}"; do
-  container_id="$(docker compose ps -q --all "$service")"
+  container_id="$(proxyhub_compose_service_container_id runtime_compose "$service")"
   log_driver="$(docker inspect --format '{{.HostConfig.LogConfig.Type}}' "$container_id")"
   max_size="$(docker inspect --format '{{index .HostConfig.LogConfig.Config "max-size"}}' "$container_id")"
   max_file="$(docker inspect --format '{{index .HostConfig.LogConfig.Config "max-file"}}' "$container_id")"
@@ -681,7 +698,7 @@ docker compose exec -T -w /app/apps/agent proxyhub-agent node --input-type=modul
   < scripts/runtime/verify-xray-lifecycle.mjs
 
 for service in "${services[@]}"; do
-  container_id="$(docker compose ps -q --all "$service")"
+  container_id="$(proxyhub_compose_service_container_id runtime_compose "$service")"
   state="$(docker inspect --format '{{.State.Status}}' "$container_id")"
   restart_count="$(docker inspect --format '{{.RestartCount}}' "$container_id")"
   if [[ "$state" != "running" || "$restart_count" != "0" ]]; then
